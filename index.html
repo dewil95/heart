@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heart Drawing Website</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f8f8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        
+        h1 {
+            color: #e91e63;
+            margin-bottom: 20px;
+        }
+        
+        .container {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .heart-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+        
+        .heart-container.revealed {
+            display: block;
+            animation: fadeIn 1s;
+        }
+        
+        .present-container {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+        
+        .present-container:hover {
+            transform: scale(1.05);
+        }
+        
+        .present {
+            width: 100%;
+            height: 100%;
+            background-color: #ff5252;
+            border-radius: 10px;
+            position: relative;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        .ribbon-v {
+            position: absolute;
+            width: 20px;
+            background-color: #7e57c2;
+            height: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .ribbon-h {
+            position: absolute;
+            height: 20px;
+            background-color: #7e57c2;
+            width: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
+        .bow {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-color: #7e57c2;
+            border-radius: 50%;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+        }
+        
+        .bow::before, .bow::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 40px;
+            background-color: #7e57c2;
+            border-radius: 10px;
+        }
+        
+        .bow::before {
+            left: -15px;
+            transform: rotate(-30deg);
+        }
+        
+        .bow::after {
+            right: -15px;
+            transform: rotate(30deg);
+        }
+        
+        .message {
+            text-align: center;
+            font-size: 22px;
+            margin-top: 20px;
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .valiant-text {
+            position: absolute;
+            font-family: 'Arial Black', sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: white;
+            z-index: 5;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+        
+        svg {
+            filter: drop-shadow(0 0 10px rgba(233, 30, 99, 0.5));
+        }
+        
+        .controls {
+            margin-top: 30px;
+            display: flex;
+            gap: 20px;
+        }
+        
+        button {
+            background-color: #e91e63;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            background-color: #c2185b;
+            transform: scale(1.05);
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        input[type="color"] {
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 50%;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    
+    <div class="container">
+        <div class="present-container" id="present">
+            <div class="present">
+                <div class="ribbon-v"></div>
+                <div class="ribbon-h"></div>
+                <div class="bow"></div>
+            </div>
+        </div>
+        
+        <div class="heart-container" id="heartContainer">
+            <svg id="heart" width="100%" height="100%" viewBox="0 0 100 100">
+                <path id="heartPath" d="M50,90 C100,65 100,25 75,10 C60,0 50,10 50,25 C50,10 40,0 25,10 C0,25 0,65 50,90" fill="#e91e63" stroke="#c2185b" stroke-width="1" />
+                <text id="valiantText" x="50" y="55" text-anchor="middle" class="valiant-text" fill="white" font-size="8">VALIANT</text>
+            </svg>
+        </div>
+    </div>
+    
+    <div class="message" id="message">Click the present to reveal the heart!</div>
+    
+    <div class="controls">
+        <input type="color" id="colorPicker" value="#e91e63" disabled>
+        <button id="animateBtn" disabled>Animate</button>
+        <button id="resetBtn">Reset</button>
+    </div>
+    
+    <script>
+        const heart = document.getElementById('heartPath');
+        const heartContainer = document.getElementById('heartContainer');
+        const present = document.getElementById('present');
+        const message = document.getElementById('message');
+        const colorPicker = document.getElementById('colorPicker');
+        const animateBtn = document.getElementById('animateBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const valiantText = document.getElementById('valiantText');
+        let animation;
+        let revealed = false;
+        
+        // Present click handler
+        present.addEventListener('click', () => {
+            if (!revealed) {
+                present.style.display = 'none';
+                heartContainer.classList.add('revealed');
+                
+                message.textContent = "Heart revealed! Use the controls below.";
+                colorPicker.disabled = false;
+                animateBtn.disabled = false;
+                
+                revealed = true;
+            }
+        });
+        
+        // Color change
+        colorPicker.addEventListener('input', () => {
+            heart.setAttribute('fill', colorPicker.value);
+            heart.setAttribute('stroke', adjustColor(colorPicker.value, -20));
+        });
+        
+        // Animation
+        animateBtn.addEventListener('click', () => {
+            if (animation) {
+                cancelAnimationFrame(animation);
+                animation = null;
+                animateBtn.textContent = 'Animate';
+            } else {
+                let scale = 1;
+                let direction = 0.01;
+                
+                function pulse() {
+                    scale += direction;
+                    
+                    if (scale > 1.2) direction = -0.01;
+                    if (scale < 0.8) direction = 0.01;
+                    
+                    heart.setAttribute('transform', `translate(${50 - 50 * scale}, ${50 - 50 * scale}) scale(${scale})`);
+                    
+                    // Make valiant text scale inversely for better readability
+                    const textScale = 1 / scale;
+                    const textX = 50;
+                    const textY = 55;
+                    valiantText.setAttribute('transform', `translate(${textX},${textY}) scale(${textScale}) translate(-${textX},-${textY})`);
+                    
+                    animation = requestAnimationFrame(pulse);
+                }
+                
+                pulse();
+                animateBtn.textContent = 'Stop';
+            }
+        });
+        
+        // Reset
+        resetBtn.addEventListener('click', () => {
+            heart.setAttribute('fill', '#e91e63');
+            heart.setAttribute('stroke', '#c2185b');
+            heart.removeAttribute('transform');
+            valiantText.removeAttribute('transform');
+            colorPicker.value = '#e91e63';
+            
+            if (animation) {
+                cancelAnimationFrame(animation);
+                animation = null;
+                animateBtn.textContent = 'Animate';
+            }
+            
+            if (revealed) {
+                heartContainer.classList.remove('revealed');
+                present.style.display = 'block';
+                message.textContent = "Click the present to reveal the heart!";
+                colorPicker.disabled = true;
+                animateBtn.disabled = true;
+                revealed = false;
+            }
+        });
+        
+        // Helper to darken colors
+        function adjustColor(color, amount) {
+            const hex = color.replace('#', '');
+            const r = Math.max(0, Math.min(255, parseInt(hex.substring(0, 2), 16) + amount));
+            const g = Math.max(0, Math.min(255, parseInt(hex.substring(2, 4), 16) + amount));
+            const b = Math.max(0, Math.min(255, parseInt(hex.substring(4, 6), 16) + amount));
+            
+            return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+    </script>
+</body>
+</html>
