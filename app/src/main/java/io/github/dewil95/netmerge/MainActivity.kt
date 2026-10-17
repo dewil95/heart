@@ -6,11 +6,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -37,10 +39,12 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var toggle: Button
     private lateinit var appsButton: Button
+    private lateinit var overlayButton: Button
     private lateinit var headline: TextView
     private lateinit var error: TextView
     private lateinit var linksBox: LinearLayout
     private var running = false
+    private var askedOverlayPermission = false
 
     private val poll = object : Runnable {
         override fun run() {
@@ -63,7 +67,32 @@ class MainActivity : Activity() {
         super.onResume()
         val n = ExcludedApps.get(this).size
         appsButton.text = if (n == 0) "Apps that don't merge: none" else "Apps that don't merge: $n"
+        if (askedOverlayPermission) { // back from Settings
+            askedOverlayPermission = false
+            if (Settings.canDrawOverlays(this)) SpeedOverlay.setEnabled(this, true)
+        }
+        renderOverlayButton()
         handler.post(poll)
+    }
+
+    private fun onOverlayToggle() {
+        when {
+            SpeedOverlay.isEnabled(this) -> SpeedOverlay.setEnabled(this, false)
+            Settings.canDrawOverlays(this) -> SpeedOverlay.setEnabled(this, true)
+            else -> {
+                // Granted on a system screen; picked up in onResume.
+                askedOverlayPermission = true
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
+                )
+            }
+        }
+        renderOverlayButton()
+    }
+
+    private fun renderOverlayButton() {
+        val on = SpeedOverlay.isEnabled(this) && Settings.canDrawOverlays(this)
+        overlayButton.text = "Speed on screen over ${SpeedOverlay.SHOW_ABOVE_MBPS} Mbps: " + if (on) "on" else "off"
     }
 
     override fun onPause() {
@@ -159,6 +188,8 @@ class MainActivity : Activity() {
             setOnClickListener { startActivity(Intent(this@MainActivity, AppsActivity::class.java)) }
         }
         column.addView(appsButton, below(20))
+        overlayButton = Button(this).apply { setOnClickListener { onOverlayToggle() } }
+        column.addView(overlayButton, below(8))
         column.addView(text(NOTE, 13f).apply { alpha = 0.6f }, below(28))
         column.addView(text("Version ${Mobile.Version}", 12f).apply { alpha = 0.4f }, below(16))
 

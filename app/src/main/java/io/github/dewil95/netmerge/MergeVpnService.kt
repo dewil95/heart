@@ -54,11 +54,16 @@ class MergeVpnService : VpnService(), SocketBinder {
     @Volatile // also read by bindSocket on Go's threads
     private var tracker: NetworkTracker? = null
     private var running = false
+    private val overlay by lazy { SpeedOverlay(this) }
+    private var ticks = 0
 
+    // Every second for the speed badge; the notification every other second.
     private val refresh = object : Runnable {
         override fun run() {
-            notifyStatus()
-            handler.postDelayed(this, 2000)
+            val st = MergeStatus.parse(Mobile.status())
+            overlay.update(st)
+            if (ticks++ % 2 == 0) notifyStatus(st)
+            handler.postDelayed(this, 1000)
         }
     }
 
@@ -162,6 +167,7 @@ class MergeVpnService : VpnService(), SocketBinder {
 
     private fun stopMerging() {
         handler.removeCallbacks(refresh)
+        overlay.hide()
         tracker?.stop()
         tracker = null
         if (running) {
@@ -213,14 +219,13 @@ class MergeVpnService : VpnService(), SocketBinder {
         PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun notifyStatus() {
+    private fun notifyStatus(st: MergeStatus) {
         val nm = getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Merging status", NotificationManager.IMPORTANCE_LOW),
             )
         }
-        val st = MergeStatus.parse(Mobile.status())
         val stop = PendingIntent.getService(this, 1, intent(this, ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         val icon = Icon.createWithResource(this, R.drawable.ic_stat_merge)
         val n = Notification.Builder(this, CHANNEL_ID)

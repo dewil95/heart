@@ -6,6 +6,8 @@
     <!-- Keeps mobile data up while Wi-Fi is connected (ConnectivityManager.requestNetwork). -->
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The optional speed badge under the status bar ("Display over other apps"). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Lets "Apps that don't merge" list the apps that have a launcher icon (Android 11+). -->
     <queries>

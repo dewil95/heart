@@ -39,6 +39,9 @@ Details and the differences from desktop net-merge: [docs/PORTING.md](docs/PORTI
   out, tick it under *Apps that don't merge*. It then skips net-merge completely and uses one network,
   as if net-merge weren't installed. Changes apply when you leave that screen (open connections
   restart once).
+- **Speed on screen:** optional. A small see-through badge appears under the status bar (top right,
+  under the battery) only while net-merge carries more than 100 Mbps, and hides below that. It needs
+  the "Display over other apps" permission once, and counts only traffic that goes through net-merge.
 - **IPv6** is balanced only when every network has it. Otherwise new IPv6 connections are refused, apps
   fall back to IPv4 at once, and IPv4 is spread over every network (same as desktop net-merge).
 - DNS goes to 1.1.1.1 and 8.8.8.8, so it works over every network.
