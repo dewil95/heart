@@ -76,3 +76,45 @@ jobs:
           Install: download net-merge-debug.apk below on your phone, open it and allow installing from this source. Then open net-merge, tap Start merging and accept the VPN request.
 
           Every build is signed with the same key, so a newer one installs over this one."
+
+  # Smoke test on an emulator: install, start merging, open every screen. Screenshots and the app's
+  # log go to the "android-screenshots" pre-release, so they can be looked at without signing in.
+  screenshots:
+    name: Emulator screenshots
+    needs: apk
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: android-screenshots
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: net-merge-debug-apk
+          path: apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: scripts/emulator-screenshots.sh apk/app-debug.apk shots
+      - name: Publish screenshots
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls shots
+          gh release delete android-screenshots --yes --cleanup-tag || true
+          gh release create android-screenshots shots/* \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "Emulator screenshots (CI)" \
+            --notes "Screens of the build at ${GITHUB_SHA::7} on an Android 14 emulator, plus the app's log."
