@@ -1,0 +1,12 @@
+# Gradle / Android Studio
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+.kotlin/
+
+# Built by scripts/build-core.sh
+app/libs/*.aar
+app/libs/*.jar
