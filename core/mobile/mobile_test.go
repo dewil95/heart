@@ -9,8 +9,8 @@ func TestToNicsLeavesSourceToTheNetwork(t *testing.T) {
 	ns := toNics([]network{
 		{Name: "wlan0", Handle: 1, IP4: "192.168.1.5", V4: true},
 		{Name: "rmnet_data0", Handle: 2, IP6: "2001:db8::5", V4: true, V6: true}, // 464XLAT
-		{Name: "dead", Handle: 3},              // carries nothing
-		{Name: "nohandle", V4: true, V6: true}, // can't be pinned
+		{Name: "dead", Handle: 3},                                                // carries nothing
+		{Name: "nohandle", V4: true, V6: true},                                   // can't be pinned
 	})
 	if len(ns) != 2 {
 		t.Fatalf("got %d networks, want 2: %+v", len(ns), ns)
