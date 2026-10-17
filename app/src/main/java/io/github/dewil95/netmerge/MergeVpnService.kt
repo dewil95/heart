@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.net.VpnService
 import android.os.Handler
@@ -26,6 +27,9 @@ class MergeVpnService : VpnService(), SocketBinder {
     companion object {
         const val ACTION_START = "io.github.dewil95.netmerge.START"
         const val ACTION_STOP = "io.github.dewil95.netmerge.STOP"
+
+        /** The list of apps that don't merge changed: rebuild the VPN with it. */
+        const val ACTION_RELOAD = "io.github.dewil95.netmerge.RELOAD"
 
         private const val TAG = "net-merge"
         private const val CHANNEL_ID = "status"
@@ -59,10 +63,20 @@ class MergeVpnService : VpnService(), SocketBinder {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopMerging()
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopMerging()
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_RELOAD -> {
+                if (running) {
+                    reload()
+                } else {
+                    stopSelf() // nothing to apply now; the list is read at the next start
+                }
+                return START_STICKY
+            }
         }
         // ACTION_START from the app, or android.net.VpnService from the system (always-on VPN).
         startMerging()
@@ -75,40 +89,68 @@ class MergeVpnService : VpnService(), SocketBinder {
         val t = NetworkTracker(this, ::onNetworksChanged)
         tracker = t
         t.start()
+        if (startEngine()) {
+            running = true
+            handler.post(refresh)
+        }
+    }
 
+    /**
+     * Establishing again replaces the VPN interface; Go then swaps to the new one and closes the old.
+     * Open connections restart, which is fine for a settings change.
+     */
+    private fun reload() {
+        if (startEngine()) {
+            tracker?.let { t -> setUnderlyingNetworks(t.current().map { it.network }.toTypedArray()) }
+        }
+    }
+
+    /** Opens the VPN interface and hands it to Go. On failure the service stops with [lastError] set. */
+    private fun startEngine(): Boolean {
         val mtu = Mobile.DefaultMTU.toInt()
         val tun = try {
-            Builder()
-                .setSession(getString(R.string.app_name))
-                .setMtu(mtu)
-                .addAddress(TUN_IP4, 24)
-                .addRoute("0.0.0.0", 0)
-                .addAddress(TUN_IP6, 64)
-                .addRoute("::", 0)
-                // Apps' DNS goes through the TUN like everything else, so it needs a resolver
-                // that every network can reach.
-                .addDnsServer("1.1.1.1")
-                .addDnsServer("8.8.8.8")
-                // Our own sockets (the re-opened connections) must never come back in.
-                .addDisallowedApplication(packageName)
-                .setConfigureIntent(openAppIntent())
-                .establish()
+            buildTun(mtu)
         } catch (e: Exception) {
             fail("Could not create the VPN: ${e.message}")
-            return
+            return false
         }
         if (tun == null) {
             fail("VPN permission was taken away. Open net-merge and tap Start again.")
-            return
+            return false
         }
         try {
             Mobile.start(tun.detachFd(), mtu, this)
         } catch (e: Exception) {
             fail("Could not start merging: ${e.message}")
-            return
+            return false
         }
-        running = true
-        handler.post(refresh)
+        return true
+    }
+
+    private fun buildTun(mtu: Int): ParcelFileDescriptor? {
+        val b = Builder()
+            .setSession(getString(R.string.app_name))
+            .setMtu(mtu)
+            .addAddress(TUN_IP4, 24)
+            .addRoute("0.0.0.0", 0)
+            .addAddress(TUN_IP6, 64)
+            .addRoute("::", 0)
+            // Apps' DNS goes through the TUN like everything else, so it needs a resolver that
+            // every network can reach.
+            .addDnsServer("1.1.1.1")
+            .addDnsServer("8.8.8.8")
+            // Our own sockets (the re-opened connections) must never come back in.
+            .addDisallowedApplication(packageName)
+            .setConfigureIntent(openAppIntent())
+        // Apps the user chose not to merge skip the VPN and use Android's default network.
+        for (pkg in ExcludedApps.get(this)) {
+            try {
+                b.addDisallowedApplication(pkg)
+            } catch (e: PackageManager.NameNotFoundException) {
+                // Uninstalled since it was chosen.
+            }
+        }
+        return b.establish()
     }
 
     private fun fail(message: String) {

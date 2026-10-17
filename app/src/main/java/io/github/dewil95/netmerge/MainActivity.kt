@@ -14,7 +14,6 @@ import android.os.Looper
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-import android.view.WindowInsets
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -31,11 +30,13 @@ class MainActivity : Activity() {
                 "Apps that open many connections at once get faster: downloads, browsers, app " +
                 "updates, cloud uploads. A single connection (one video stream, one download " +
                 "stream) always uses one network.\n\n" +
-                "Some sites tie your login to one IP address and may ask you to log in again."
+                "Some sites tie your login to one IP address and may ask you to log in again. " +
+                "If an app doesn't work or keeps logging you out, add it to the apps that don't merge."
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var toggle: Button
+    private lateinit var appsButton: Button
     private lateinit var headline: TextView
     private lateinit var error: TextView
     private lateinit var linksBox: LinearLayout
@@ -60,6 +61,8 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        val n = ExcludedApps.get(this).size
+        appsButton.text = if (n == 0) "Apps that don't merge: none" else "Apps that don't merge: $n"
         handler.post(poll)
     }
 
@@ -152,28 +155,17 @@ class MainActivity : Activity() {
         column.addView(error, below(8))
         linksBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         column.addView(linksBox, below(8))
+        appsButton = Button(this).apply {
+            setOnClickListener { startActivity(Intent(this@MainActivity, AppsActivity::class.java)) }
+        }
+        column.addView(appsButton, below(20))
         column.addView(text(NOTE, 13f).apply { alpha = 0.6f }, below(28))
         column.addView(text("Version ${Mobile.Version}", 12f).apply { alpha = 0.4f }, below(16))
 
         return ScrollView(this).apply {
             clipToPadding = false
             addView(column)
-            // From Android 15 apps draw under the status and navigation bars; keep content clear.
-            setOnApplyWindowInsetsListener { v, insets ->
-                if (Build.VERSION.SDK_INT >= 30) {
-                    val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-                    v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-                } else {
-                    @Suppress("DEPRECATION")
-                    v.setPadding(
-                        insets.systemWindowInsetLeft,
-                        insets.systemWindowInsetTop,
-                        insets.systemWindowInsetRight,
-                        insets.systemWindowInsetBottom,
-                    )
-                }
-                insets
-            }
+            padForSystemBars()
         }
     }
 
@@ -185,6 +177,4 @@ class MainActivity : Activity() {
 
     private fun below(topDp: Int) =
         LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(topDp) }
-
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 }

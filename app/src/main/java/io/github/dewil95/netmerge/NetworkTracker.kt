@@ -92,6 +92,9 @@ class NetworkTracker(context: Context, private val onChange: (List<Link>) -> Uni
     /** The network for a handle passed to Go, or null once it is gone. Any thread. */
     fun network(handle: Long): Network? = byHandle[handle]
 
+    /** The list last reported to onChange. Main thread. */
+    fun current(): List<Link> = last
+
     private fun publish() {
         val links = caps.mapNotNull { (n, nc) -> props[n]?.let { link(n, nc, it) } }
             .sortedWith(compareBy({ it.label }, { it.name }))

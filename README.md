@@ -35,6 +35,10 @@ Details and the differences from desktop net-merge: [docs/PORTING.md](docs/PORTI
   not get faster. Many parallel connections do.
 - **It takes Android's VPN slot**, so it can't run together with another VPN.
 - **Some sites tie your login to one IP address** and may ask you to log in again.
+- **Apps that don't merge:** every app merges by default. If an app doesn't work or keeps logging you
+  out, tick it under *Apps that don't merge*. It then skips net-merge completely and uses one network,
+  as if net-merge weren't installed. Changes apply when you leave that screen (open connections
+  restart once).
 - **IPv6** is balanced only when every network has it. Otherwise new IPv6 connections are refused, apps
   fall back to IPv4 at once, and IPv4 is spread over every network (same as desktop net-merge).
 - DNS goes to 1.1.1.1 and 8.8.8.8, so it works over every network.
@@ -70,13 +74,13 @@ Tests for the Go core need no phone: `cd core && go test ./...`.
 | `core/nics` | the network list and socket pinning, through the app |
 | `core/tunfd` | userland TCP/IP stack on the VPN's file descriptor |
 | `core/mobile` | the API the app calls (`mobile.Mobile` in Java/Kotlin) |
-| `app/` | the Android app: `MergeVpnService`, `NetworkTracker`, `MainActivity` |
+| `app/` | the Android app: `MergeVpnService`, `NetworkTracker`, `MainActivity`, `AppsActivity` (apps that don't merge) |
 
 ## Ideas for next steps
 
 - Quick Settings tile to start and stop.
 - A switch for the IPv6 mode and a choice of which networks to use.
-- Per-app exclusions (apps that need one stable IP, like banking).
+- Keep each website on one network, so sites that tie logins to an IP still merge across sites.
 - Counting traffic per app.
 
 ## License
