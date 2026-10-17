@@ -38,16 +38,19 @@ open_screen() { # apps | usage
   adb shell am start -W -n $pkg/.MainActivity --es open "$1" >/dev/null
 }
 
-# Parallel downloads from the emulator's shell (its traffic goes through the VPN like an app's),
-# so both networks get connections. The file is this app's own 27 MB APK on GitHub: Cloudflare's
-# speed test rate-limits repeated runs from one IP. Best effort: skipped if the image has no curl.
+# 8 parallel downloads from the emulator's shell (its traffic goes through the VPN like an app's),
+# so both networks get connections. The image has no curl: core/cmd/fetch, built by the workflow
+# as a static linux binary ($FETCH), does it. The file is this app's own 27 MB APK on GitHub
+# (Cloudflare's speed test rate-limits repeated runs from one IP).
 traffic() {
-  adb shell 'command -v curl >/dev/null || { echo "no curl on this image"; exit 0; }
-    for i in 1 2 3 4 5 6 7 8; do
-      curl -sL -o /dev/null --max-time 25 -w "download $i: HTTP %{http_code}, %{size_download} bytes, %{speed_download} B/s\n" \
-        "https://github.com/dewil95/heart/releases/download/android-latest/net-merge-debug.apk" &
-    done
-    wait' || true
+  if [ ! -x "${FETCH:-}" ]; then
+    echo "no fetch binary, skipping downloads"
+    return 0
+  fi
+  adb push "$FETCH" /data/local/tmp/fetch >/dev/null
+  adb shell chmod 755 /data/local/tmp/fetch
+  adb shell SSL_CERT_DIR=/system/etc/security/cacerts /data/local/tmp/fetch -n 8 -t 25s -d 15s \
+    https://github.com/dewil95/heart/releases/download/android-latest/net-merge-debug.apk || true
 }
 
 save_log() {

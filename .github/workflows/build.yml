@@ -90,6 +90,13 @@ jobs:
       group: android-screenshots
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: core/go.mod
+          cache-dependency-path: core/go.sum
+      - name: Build the on-device downloader
+        working-directory: core
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../fetch ./cmd/fetch
       - uses: actions/download-artifact@v4
         with:
           name: net-merge-debug-apk
@@ -106,7 +113,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
-          script: scripts/emulator-screenshots.sh apk/app-debug.apk shots
+          script: FETCH=./fetch scripts/emulator-screenshots.sh apk/app-debug.apk shots
       - name: Publish screenshots
         if: always()
         env:
