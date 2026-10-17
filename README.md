@@ -39,6 +39,9 @@ Details and the differences from desktop net-merge: [docs/PORTING.md](docs/PORTI
   out, tick it under *Apps that don't merge*. It then skips net-merge completely and uses one network,
   as if net-merge weren't installed. Changes apply when you leave that screen (open connections
   restart once).
+- **Usage dashboard:** Wi-Fi vs mobile data for today (per 2 hours), the last 7 or 30 days (per day),
+  and per app. It reads Android's own counters, so it covers the whole phone with or without net-merge
+  running, and needs "Usage access" once. On Android 8 and 9 mobile data may show as zero.
 - **Speed on screen:** optional. A small see-through badge appears under the status bar (top right,
   under the battery) only while net-merge carries more than 100 Mbps, and hides below that. It needs
   the "Display over other apps" permission once, and counts only traffic that goes through net-merge.

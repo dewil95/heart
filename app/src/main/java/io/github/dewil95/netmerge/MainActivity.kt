@@ -188,6 +188,11 @@ class MainActivity : Activity() {
             setOnClickListener { startActivity(Intent(this@MainActivity, AppsActivity::class.java)) }
         }
         column.addView(appsButton, below(20))
+        val usageButton = Button(this).apply {
+            text = "Usage: Wi-Fi vs mobile data, per app"
+            setOnClickListener { startActivity(Intent(this@MainActivity, UsageActivity::class.java)) }
+        }
+        column.addView(usageButton, below(8))
         overlayButton = Button(this).apply { setOnClickListener { onOverlayToggle() } }
         column.addView(overlayButton, below(8))
         column.addView(text(NOTE, 13f).apply { alpha = 0.6f }, below(28))
