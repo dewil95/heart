@@ -29,9 +29,11 @@ The upstream tests run here too.
 - **The app runs with equal weights** (`SetAuto(false)`): each new flow goes to the network with
   the fewest active flows. The desktop's auto weights learn each link's speed from the traffic it
   happens to carry, and on a phone that can't tell a slow network from one that just hasn't been
-  busy. In three emulator runs, the burst of apps reconnecting when the VPN starts rated one
-  network "slow", and all 8 parallel downloads then went to the other. Least-active alone still
-  adapts: a slower network holds its flows longer, so it gets fewer new ones.
+  busy: one big download on Wi-Fi (one connection, so one network) makes mobile data look 20x
+  slower from its background chatter alone, and it then gets almost no new flows.
+  `TestChatterIsNotAMeasurement` shows the effect. Least-active alone still adapts: a slower
+  network holds its flows longer, so it gets fewer new ones. With equal weights, 8 parallel
+  downloads on the emulator ran over both networks (81.9 + 56.6 Mbit/s).
 - If auto weights are switched back on, they are tuned for phones: a second of traffic counts as a
   measurement only at 2 Mbit/s or more (desktop: 0.4), the weight floor is 0.2 (desktop: 0.05)
   and an idle link's estimate drifts back up 10%/s (desktop: 3%/s).

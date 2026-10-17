@@ -118,9 +118,9 @@ func Start(tunFd, mtu int32, binder SocketBinder) error {
 	mu.Unlock()
 	// Equal weights: every new flow goes to the network with the fewest active flows. The desktop's
 	// auto weights learn speed by watching traffic, and on a phone that misjudges a network that
-	// just hasn't been busy yet: in three emulator runs the burst of apps reconnecting at start
-	// rated one network "slow" and all 8 parallel downloads then went to the other. Least-active
-	// alone still adapts, since a slower network holds its flows longer and so gets fewer new ones.
+	// just hasn't been busy yet (one big download on Wi-Fi makes mobile data look many times slower
+	// from its background chatter; see TestChatterIsNotAMeasurement). Least-active alone still
+	// adapts, since a slower network holds its flows longer and so gets fewer new ones.
 	sched.SetAuto(false)
 	bal := engine.NewBalancer(sched)
 	bal.SetV6Mode(mode)
