@@ -87,6 +87,7 @@ func (b *Balancer) ListenUDP(ctx context.Context, f Family) (net.PacketConn, err
 		pc, err := lc.ListenPacket(ctx, network, net.JoinHostPort(sl.ip(f).String(), "0"))
 		b.S.ReleaseFor(sl, f)
 		if err != nil {
+			sl.noteErr(err)
 			if classify(err).linkDown {
 				b.S.Fail(sl, f, b.FailCooldown)
 			}

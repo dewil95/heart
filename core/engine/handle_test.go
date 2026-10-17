@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -108,5 +109,8 @@ func TestBindFailureFailsOver(t *testing.T) {
 	}
 	if s.slots[0].failed.Load() != 1 {
 		t.Fatal("a network that can't be bound should be sidelined")
+	}
+	if st := s.Snapshot()[0]; st.DialErrors != 1 || !strings.Contains(st.LastError, "network is gone") {
+		t.Fatalf("the failure should be reported: %d %q", st.DialErrors, st.LastError)
 	}
 }

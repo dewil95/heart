@@ -150,6 +150,7 @@ class NetworkTracker(context: Context, private val onChange: (List<Link>) -> Uni
 
         private fun isGlobal(a: InetAddress): Boolean =
             !a.isLinkLocalAddress && !a.isLoopbackAddress &&
+                !a.isSiteLocalAddress && // fec0::/10, e.g. the emulator's Wi-Fi
                 (a.address[0].toInt() and 0xfe) != 0xfc // not a ULA (fc00::/7)
 
         private fun label(nc: NetworkCapabilities): String = when {

@@ -61,6 +61,26 @@ class MainActivity : Activity() {
         ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
         }
+        openRequestedScreen(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openRequestedScreen(intent)
+    }
+
+    /**
+     * `--es open apps|usage` opens that screen directly (shortcuts, and the emulator test, which can't
+     * find buttons on this screen while it refreshes every second).
+     */
+    private fun openRequestedScreen(intent: Intent?) {
+        val target = when (intent?.getStringExtra("open")) {
+            "apps" -> AppsActivity::class.java
+            "usage" -> UsageActivity::class.java
+            else -> return
+        }
+        intent.removeExtra("open") // not again on rotation
+        startActivity(Intent(this, target))
     }
 
     override fun onResume() {
@@ -158,6 +178,10 @@ class MainActivity : Activity() {
             card.addView(text("${l.health} · $flows · ${MergeStatus.mbit(l.rateIn + l.rateOut)}", 15f))
             val addrs = listOf(l.ip4, l.ip6).filter { it.isNotEmpty() }.joinToString("  ")
             if (addrs.isNotEmpty()) card.addView(text(addrs, 12f).apply { alpha = 0.6f })
+            if (l.errors > 0) {
+                val failed = if (l.errors == 1L) "1 failed connection" else "${l.errors} failed connections"
+                card.addView(text("$failed · last: ${l.lastError}", 12f).apply { alpha = 0.6f })
+            }
             linksBox.addView(card, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) })
         }
     }
@@ -196,7 +220,8 @@ class MainActivity : Activity() {
         overlayButton = Button(this).apply { setOnClickListener { onOverlayToggle() } }
         column.addView(overlayButton, below(8))
         column.addView(text(NOTE, 13f).apply { alpha = 0.6f }, below(28))
-        column.addView(text("Version ${Mobile.Version}", 12f).apply { alpha = 0.4f }, below(16))
+        val version = packageManager.getPackageInfo(packageName, 0).versionName
+        column.addView(text("Version $version", 12f).apply { alpha = 0.4f }, below(16))
 
         return ScrollView(this).apply {
             clipToPadding = false

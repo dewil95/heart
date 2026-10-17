@@ -52,6 +52,8 @@ type Slot struct {
 	actF                  [2]atomic.Int64
 	bytesIn, bytesOut     [2]atomic.Int64
 	probing               [2]atomic.Bool
+	dialErrs              atomic.Int64           // every failed dial or UDP socket, link-down or not
+	lastErr               atomic.Pointer[string] // the latest of them, shown in the app
 
 	// guarded by Scheduler.mu
 	weight          [2]float64
@@ -79,6 +81,12 @@ func (sl *Slot) ip(f Family) net.IP {
 
 func (sl *Slot) handle() int64 { return sl.addr.Load().handle }
 
+func (sl *Slot) noteErr(err error) {
+	sl.dialErrs.Add(1)
+	s := err.Error()
+	sl.lastErr.Store(&s)
+}
+
 type SlotStats struct {
 	Name              string
 	IP                string
@@ -89,6 +97,8 @@ type SlotStats struct {
 	Present           bool
 	Active, Total     int64
 	Failed            int64
+	DialErrors        int64
+	LastError         string
 	BytesIn, BytesOut int64
 	RateIn, RateOut   float64 // through net-merge, both families summed (bytes/s)
 	LinkIn, LinkOut   float64 // through the adapter by any app, from the OS's counters (bytes/s)
@@ -382,6 +392,10 @@ func (s *Scheduler) Snapshot() []SlotStats {
 			RateIn:   sl.rateIn[Fam4] + sl.rateIn[Fam6], RateOut: sl.rateOut[Fam4] + sl.rateOut[Fam6],
 			LinkIn: sl.linkRateIn, LinkOut: sl.linkRateOut,
 			Peak: sl.peak[Fam4], Peak6: sl.peak[Fam6],
+			DialErrors: sl.dialErrs.Load(),
+		}
+		if e := sl.lastErr.Load(); e != nil {
+			st.LastError = *e
 		}
 		if a.ip4 != nil {
 			st.IP, st.State = a.ip4.String(), sl.state[Fam4].String()

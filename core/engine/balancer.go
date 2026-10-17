@@ -162,6 +162,7 @@ func (b *Balancer) DialTCP(ctx context.Context, host string, port int) (net.Conn
 			return conn, sl, f, nil
 		}
 		b.S.ReleaseFor(sl, f)
+		sl.noteErr(err)
 		c := classify(err)
 		if c.linkDown {
 			b.S.Fail(sl, f, b.FailCooldown)

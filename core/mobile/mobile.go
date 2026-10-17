@@ -192,10 +192,12 @@ type linkStatus struct {
 	State    string  `json:"state"`  // IPv4 probe: checking, up, no internet; "-" without IPv4
 	State6   string  `json:"state6"` // same for IPv6
 	Present  bool    `json:"present"`
-	Active   int64   `json:"active"` // flows now
-	Total    int64   `json:"total"`  // flows since start
-	Failed   int64   `json:"failed"`
-	RateIn   float64 `json:"rateIn"` // bytes/s over the last second
+	Active   int64   `json:"active"`    // flows now
+	Total    int64   `json:"total"`     // flows since start
+	Failed   int64   `json:"failed"`    // times sidelined for a link error
+	Errors   int64   `json:"errors"`    // failed connections of any kind
+	LastErr  string  `json:"lastError"` // the latest of them
+	RateIn   float64 `json:"rateIn"`    // bytes/s over the last second
 	RateOut  float64 `json:"rateOut"`
 	BytesIn  int64   `json:"bytesIn"`
 	BytesOut int64   `json:"bytesOut"`
@@ -227,7 +229,7 @@ func Status() string {
 			st.Links = append(st.Links, linkStatus{
 				Name: l.Name, Label: n.Label, IP4: n.IP4, IP6: n.IP6,
 				State: l.State, State6: l.State6, Present: l.Present,
-				Active: l.Active, Total: l.Total, Failed: l.Failed,
+				Active: l.Active, Total: l.Total, Failed: l.Failed, Errors: l.DialErrors, LastErr: l.LastError,
 				RateIn: l.RateIn, RateOut: l.RateOut, BytesIn: l.BytesIn, BytesOut: l.BytesOut,
 				Weight: l.Weight,
 			})

@@ -18,6 +18,8 @@ data class MergeStatus(val running: Boolean, val ipv6: String, val links: List<L
         val total: Long,
         val rateIn: Double, // bytes/s
         val rateOut: Double,
+        val errors: Long, // failed connections on this network
+        val lastError: String,
     ) {
         val up: Boolean get() = present && (state == "up" || state6 == "up")
 
@@ -63,6 +65,8 @@ data class MergeStatus(val running: Boolean, val ipv6: String, val links: List<L
                     total = l.optLong("total"),
                     rateIn = l.optDouble("rateIn", 0.0),
                     rateOut = l.optDouble("rateOut", 0.0),
+                    errors = l.optLong("errors"),
+                    lastError = l.optString("lastError"),
                 )
             }
             return MergeStatus(o.optBoolean("running"), o.optString("ipv6"), links)

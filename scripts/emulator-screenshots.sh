@@ -14,12 +14,14 @@ shot() { # name [seconds to wait first]
   echo "screenshot $1"
 }
 
-# Taps the first on-screen element whose text starts with $1 (case-insensitive).
+# Taps the first on-screen element whose text starts with $1 (case-insensitive). Only for screens
+# that sit still: the dump waits for the UI to go idle.
 tap_text() {
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null
+  adb shell rm -f /sdcard/ui.xml
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null || true
   local b
-  b=$(adb shell cat /sdcard/ui.xml | tr '>' '\n' | grep -i "text=\"$1" | head -1 |
-    sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/')
+  b=$(adb shell cat /sdcard/ui.xml 2>/dev/null | tr '>' '\n' | grep -i "text=\"$1" | head -1 |
+    sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/' || true)
   if [ -z "$b" ]; then
     echo "no element with text \"$1\""
     return 1
@@ -28,8 +30,22 @@ tap_text() {
   adb shell input tap $((($1 + $3) / 2)) $((($2 + $4) / 2))
 }
 
+open_screen() { # apps | usage
+  adb shell am start -W -n $pkg/.MainActivity --es open "$1" >/dev/null
+}
+
+# Parallel downloads from the emulator's shell (its traffic goes through the VPN like an app's),
+# so both networks get connections. Best effort: skipped if the image has no curl.
+traffic() {
+  adb shell 'command -v curl >/dev/null || exit 0
+    for i in 1 2 3 4 5 6 7 8; do
+      curl -s -o /dev/null --max-time 20 "https://speed.cloudflare.com/__down?bytes=20000000" &
+    done
+    wait' || true
+}
+
 save_log() {
-  adb logcat -d | grep -E "netmerge|GoLog|net-merge|AndroidRuntime|FATAL" >"$out/logcat.txt" || true
+  adb logcat -d | grep -E "netmerge|GoLog|net-merge|AndroidRuntime|FATAL" | grep -v glBindAttribLocation >"$out/logcat.txt" || true
 }
 trap save_log EXIT
 
@@ -43,26 +59,30 @@ adb logcat -c
 adb shell am start -W -n $pkg/.MainActivity
 shot 1-main-off
 tap_text "Start merging"
-shot 2-main-merging 10 # time for the internet probes
+sleep 8 # internet probes
+traffic &
+shot 2-main-merging 10
+wait
+shot 3-main-after-downloads 2
 
-tap_text "Apps that don't merge"
-shot 3-apps 4
+open_screen apps
+shot 4-apps 4
 adb shell input keyevent KEYCODE_BACK
 
-tap_text "Usage"
-shot 4-usage-7-days 6
+open_screen usage
+shot 5-usage-7-days 6
 tap_text "30 days"
-shot 5-usage-30-days 6
+shot 6-usage-30-days 6
 tap_text "Today"
-shot 6-usage-today 6
+shot 7-usage-today 6
 adb shell input keyevent KEYCODE_BACK
 
 adb shell cmd uimode night yes
-sleep 3
-tap_text "Usage"
-shot 7-usage-dark 6
+sleep 2
+open_screen usage
+shot 8-usage-dark 6
 adb shell input keyevent KEYCODE_BACK
-shot 8-main-dark 2
+shot 9-main-dark 2
 adb shell cmd uimode night no
 
 # A crash shows up as the app's process missing.
