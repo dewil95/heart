@@ -386,6 +386,19 @@ func (s *Scheduler) Fail(sl *Slot, f Family, cooldown time.Duration) {
 	sl.failed.Add(1)
 }
 
+// Suspect is for a NIC that just timed out or lost a connect race: it is probed again right away
+// (next RunProbes tick) instead of at its routine 15 s probe, and a NIC that was up drops to "not
+// probed yet" meanwhile, so new flows prefer the NICs still known to work. A network that went
+// dead is found in seconds; a healthy one is back up after one probe.
+func (s *Scheduler) Suspect(sl *Slot, f Family) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sl.state[f] == stateUp {
+		sl.state[f] = stateUnknown
+	}
+	sl.lastProbe[f] = time.Time{}
+}
+
 func (s *Scheduler) Snapshot() []SlotStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()

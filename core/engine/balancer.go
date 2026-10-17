@@ -20,7 +20,10 @@ type Balancer struct {
 	S              *Scheduler
 	ConnectTimeout time.Duration
 	FailCooldown   time.Duration
-	v6mode         atomic.Int32
+	// RaceAfter starts a second attempt on another NIC when the first hasn't connected by then;
+	// the first to connect wins. 0 = no racing.
+	RaceAfter time.Duration
+	v6mode    atomic.Int32
 }
 
 // V6Mode decides what happens to IPv6 flows entering the TUN.
@@ -78,7 +81,7 @@ func (b *Balancer) V6State() string {
 }
 
 func NewBalancer(s *Scheduler) *Balancer {
-	return &Balancer{S: s, ConnectTimeout: 8 * time.Second, FailCooldown: 15 * time.Second}
+	return &Balancer{S: s, ConnectTimeout: 8 * time.Second, FailCooldown: 15 * time.Second, RaceAfter: time.Second}
 }
 
 // Windows socket error codes; the portable syscall.E* constants don't match them on Windows.
@@ -129,48 +132,110 @@ func classify(err error) dialClass {
 	return dialClass{rep: repFailure}
 }
 
+type dialResult struct {
+	conn net.Conn
+	sl   *Slot
+	err  error
+}
+
 // DialTCP connects to host:port over one NIC, failing over to the others on link-level errors.
-// On success the caller owns the returned slot and must Relay or Release it.
+// If the first NIC hasn't connected after RaceAfter, another NIC is tried in parallel and the first
+// to connect wins, so a network that went dead or stalls costs about RaceAfter instead of the whole
+// connect timeout; the slow one is suspected and re-probed. On success the caller owns the
+// returned slot and must Relay or Release it.
 func (b *Balancer) DialTCP(ctx context.Context, host string, port int) (net.Conn, *Slot, Family, error) {
 	// The destination's family decides which NIC address is used; a host name stays IPv4.
 	f, network := Fam4, "tcp4"
 	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
 		f, network = Fam6, "tcp6"
 	}
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	tried := map[string]struct{}{}
 	rep := byte(repFailure)
 	var lastErr error = errors.New("no usable network adapter")
 	if f == Fam6 {
 		rep, lastErr = repNetUnreachable, errors.New("no usable IPv6 adapter")
 	}
-	for {
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel() // stops the attempts that lost
+	results := make(chan dialResult, 4)
+	inFlight := map[*Slot]time.Time{} // when each attempt started
+	start := func() bool {
 		sl := b.S.AcquireFor(f, tried)
 		if sl == nil {
-			return nil, nil, f, &dialError{rep: rep, err: lastErr}
+			return false
 		}
 		tried[sl.key] = struct{}{}
-		d := net.Dialer{
-			Control:   nics.ForceEgress(sl.handle()), // pins the flow to this network and keeps it out of the VPN
-			Timeout:   b.ConnectTimeout,
-			KeepAlive: 30 * time.Second,
+		inFlight[sl] = time.Now()
+		go func() {
+			c, err := b.dialOne(ctx, sl, f, network, addr)
+			results <- dialResult{c, sl, err}
+		}()
+		return true
+	}
+	if !start() {
+		return nil, nil, f, &dialError{rep: rep, err: lastErr}
+	}
+	var race <-chan time.Time
+	if b.RaceAfter > 0 {
+		t := time.NewTimer(b.RaceAfter)
+		defer t.Stop()
+		race = t.C
+	}
+	for len(inFlight) > 0 {
+		select {
+		case <-race:
+			start() // nothing happens if there is no other NIC
+		case r := <-results:
+			delete(inFlight, r.sl)
+			if r.err == nil {
+				for sl, t := range inFlight {
+					if time.Since(t) >= b.RaceAfter {
+						b.S.Suspect(sl, f) // still connecting after RaceAfter while another NIC answered
+					}
+				}
+				go b.drain(results, len(inFlight), f)
+				return r.conn, r.sl, f, nil
+			}
+			b.S.ReleaseFor(r.sl, f)
+			r.sl.noteErr(r.err)
+			c := classify(r.err)
+			if c.linkDown {
+				b.S.Fail(r.sl, f, b.FailCooldown)
+			} else if c.retry {
+				b.S.Suspect(r.sl, f) // a timeout: check the NIC now rather than at its next probe
+			}
+			rep, lastErr = c.rep, r.err
+			if c.retry && ctx.Err() == nil && len(inFlight) == 0 {
+				start()
+			}
 		}
-		if ip := sl.ip(f); !ip.IsUnspecified() {
-			d.LocalAddr = &net.TCPAddr{IP: ip} // and to the source address, when one is given
+	}
+	return nil, nil, f, &dialError{rep: rep, err: lastErr}
+}
+
+func (b *Balancer) dialOne(ctx context.Context, sl *Slot, f Family, network, addr string) (net.Conn, error) {
+	d := net.Dialer{
+		Control:   nics.ForceEgress(sl.handle()), // pins the flow to this network and keeps it out of the VPN
+		Timeout:   b.ConnectTimeout,
+		KeepAlive: 30 * time.Second,
+	}
+	if ip := sl.ip(f); !ip.IsUnspecified() {
+		d.LocalAddr = &net.TCPAddr{IP: ip} // and to the source address, when one is given
+	}
+	return d.DialContext(ctx, network, addr)
+}
+
+// drain collects the attempts that lost a race: their slots are released and a connection that
+// still got through is closed.
+func (b *Balancer) drain(results <-chan dialResult, n int, f Family) {
+	for ; n > 0; n-- {
+		r := <-results
+		if r.err == nil {
+			r.conn.Close()
 		}
-		conn, err := d.DialContext(ctx, network, net.JoinHostPort(host, strconv.Itoa(port)))
-		if err == nil {
-			return conn, sl, f, nil
-		}
-		b.S.ReleaseFor(sl, f)
-		sl.noteErr(err)
-		c := classify(err)
-		if c.linkDown {
-			b.S.Fail(sl, f, b.FailCooldown)
-		}
-		rep, lastErr = c.rep, err
-		if !c.retry || ctx.Err() != nil {
-			return nil, nil, f, &dialError{rep: rep, err: err}
-		}
+		b.S.ReleaseFor(r.sl, f)
 	}
 }
 

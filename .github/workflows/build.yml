@@ -46,8 +46,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build the Go core (gomobile bind)
         run: scripts/build-core.sh
-      - name: Build and lint the app
-        run: ./gradlew --no-daemon assembleDebug lintDebug
+      - name: Build, lint and unit-test the app
+        run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
       - uses: actions/upload-artifact@v4
         with:
           name: net-merge-debug-apk

@@ -28,7 +28,8 @@ class MainActivity : Activity() {
         const val REQUEST_VPN = 1
         const val REQUEST_NOTIFICATIONS = 2
         const val NOTE =
-            "Mobile data stays on while merging, so part of your traffic uses your data plan.\n\n" +
+            "Mobile data stays on while merging (unless battery saver is on), so part of your " +
+                "traffic uses your data plan.\n\n" +
                 "Apps that open many connections at once get faster: downloads, browsers, app " +
                 "updates, cloud uploads. A single connection (one video stream, one download " +
                 "stream) always uses one network.\n\n" +
@@ -40,6 +41,7 @@ class MainActivity : Activity() {
     private lateinit var toggle: Button
     private lateinit var appsButton: Button
     private lateinit var overlayButton: Button
+    private lateinit var saverButton: Button
     private lateinit var headline: TextView
     private lateinit var error: TextView
     private lateinit var linksBox: LinearLayout
@@ -98,7 +100,18 @@ class MainActivity : Activity() {
             if (Settings.canDrawOverlays(this)) SpeedOverlay.setEnabled(this, true)
         }
         renderOverlayButton()
+        renderSaverButton()
         handler.post(poll)
+    }
+
+    private fun onSaverToggle() {
+        BatterySaver.setEnabled(this, !BatterySaver.isEnabled(this))
+        renderSaverButton()
+        rendered = null // the headline mentions the saver
+    }
+
+    private fun renderSaverButton() {
+        saverButton.text = "Battery saver: " + if (BatterySaver.isEnabled(this)) "on" else "off"
     }
 
     private fun onOverlayToggle() {
@@ -159,9 +172,13 @@ class MainActivity : Activity() {
     private fun render(st: MergeStatus) {
         running = st.running
         toggle.text = if (running) "Stop merging" else "Start merging"
+        val working = st.links.filter { it.up }
+        val standby = running && BatterySaver.isEnabled(this) &&
+            working.size == 1 && working[0].label != NetworkTracker.MOBILE_LABEL
+        val title = if (standby) "${working[0].label} · mobile data on standby (battery saver)" else st.headline
         headline.text = when {
-            running && st.rate > 0 -> "${st.headline} · ${MergeStatus.mbit(st.rate)}"
-            running -> st.headline
+            running && st.rate > 0 -> "$title · ${MergeStatus.mbit(st.rate)}"
+            running -> title
             else -> "Off. Turn on Wi-Fi and mobile data, then tap Start."
         }
         val err = MergeVpnService.lastError
@@ -225,6 +242,16 @@ class MainActivity : Activity() {
         column.addView(usageButton, below(8))
         overlayButton = Button(this).apply { setOnClickListener { onOverlayToggle() } }
         column.addView(overlayButton, below(8))
+        saverButton = Button(this).apply { setOnClickListener { onSaverToggle() } }
+        column.addView(saverButton, below(8))
+        column.addView(
+            text(
+                "Battery saver keeps mobile data on standby while Wi-Fi works. It joins when Wi-Fi " +
+                    "is busy (a download) or stops working, and rests again after a quiet minute.",
+                13f,
+            ).apply { alpha = 0.6f },
+            below(4),
+        )
         column.addView(text(NOTE, 13f).apply { alpha = 0.6f }, below(28))
         val version = packageManager.getPackageInfo(packageName, 0).versionName
         column.addView(text("Version $version", 12f).apply { alpha = 0.4f }, below(16))

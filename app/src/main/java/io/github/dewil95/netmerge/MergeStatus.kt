@@ -23,6 +23,9 @@ data class MergeStatus(val running: Boolean, val ipv6: String, val links: List<L
     ) {
         val up: Boolean get() = present && (state == "up" || state6 == "up")
 
+        /** Working, or not checked yet: worth sending traffic to. */
+        val usable: Boolean get() = up || (present && (state == "checking" || state6 == "checking"))
+
         /** The best of the two families, in words. */
         val health: String
             get() = when {

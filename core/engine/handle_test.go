@@ -141,3 +141,83 @@ func TestChatterIsNotAMeasurement(t *testing.T) {
 		t.Fatalf("a new flow should go to the less busy mobile data, went to %s", got.Name)
 	}
 }
+
+// A network that stalls (here: its socket setup hangs for 2 s) loses to the other one after
+// RaceAfter instead of holding the app's connect for the full timeout, and is re-probed at once.
+func TestRaceAvoidsStalledNetwork(t *testing.T) {
+	target := localEcho(t)
+	host, port, _ := net.SplitHostPort(target)
+	p, _ := strconv.Atoi(port)
+	nics.SetBinder(func(fd int, handle int64) error {
+		if handle == 1 {
+			time.Sleep(2 * time.Second)
+		}
+		return nil
+	})
+	t.Cleanup(func() { nics.SetBinder(nil) })
+
+	s := NewScheduler([]nics.Nic{nicH("stalled", "0.0.0.0", 1), nicH("ok", "0.0.0.0", 2)})
+	stalled, ok := s.slots[0], s.slots[1]
+	s.SetState(stalled, Fam4, true)
+	s.SetState(ok, Fam4, true)
+	ok.actF[Fam4].Add(1) // so the stalled network is picked first
+	ok.active.Add(1)
+	b := NewBalancer(s)
+	b.RaceAfter = 100 * time.Millisecond
+
+	begin := time.Now()
+	c, sl, _, err := b.DialTCP(t.Context(), host, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	took := time.Since(begin)
+	c.Close()
+	b.S.ReleaseFor(sl, Fam4)
+	if sl != ok || took > time.Second {
+		t.Fatalf("connected via %s after %v, want ok well under a second", sl.Name, took)
+	}
+	s.mu.Lock()
+	state, last := stalled.state[Fam4], stalled.lastProbe[Fam4]
+	s.mu.Unlock()
+	if state != stateUnknown || !last.IsZero() {
+		t.Fatalf("the stalled network should be suspected: state %v, last probe %v", state, last)
+	}
+	// Once its attempt gives up, the losing attempt's slot is released.
+	deadline := time.Now().Add(4 * time.Second)
+	for stalled.actF[Fam4].Load() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("losing attempt still holds its slot: %d", stalled.actF[Fam4].Load())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestSuspectOnlyDemotesWorkingNetworks(t *testing.T) {
+	s := NewScheduler([]nics.Nic{nicH("a", "0.0.0.0", 1), nicH("b", "0.0.0.0", 2)})
+	a, bb := s.slots[0], s.slots[1]
+	s.SetState(a, Fam4, true)
+	s.SetState(bb, Fam4, false)
+	for _, j := range s.probeDue() { // both were just probed
+		j.sl.probing[j.f].Store(false)
+	}
+	if len(s.probeDue()) != 0 {
+		t.Fatal("setup: nothing should be due right after probing")
+	}
+	s.Suspect(a, Fam4)
+	s.Suspect(bb, Fam4)
+	if a.state[Fam4] != stateUnknown || bb.state[Fam4] != stateDown {
+		t.Fatalf("states: a %v (want checking), b %v (want no internet)", a.state[Fam4], bb.state[Fam4])
+	}
+	due := s.probeDue()
+	if len(due) != 2 {
+		t.Fatalf("both suspects should be probed right away, got %d", len(due))
+	}
+	for _, j := range due {
+		j.sl.probing[j.f].Store(false)
+	}
+	// While a is being re-checked, new flows go to a NIC known to work, if there is one.
+	s.SetState(bb, Fam4, true)
+	if got := s.AcquireFor(Fam4, nil); got != bb {
+		t.Fatalf("new flow went to the suspected %s", got.Name)
+	}
+}

@@ -31,6 +31,13 @@ Details and the differences from desktop net-merge: [docs/PORTING.md](docs/PORTI
 ## Good to know
 
 - **Mobile data stays on** while merging, so part of your traffic uses your data plan and battery.
+  **Battery saver** (a switch on the main screen) keeps mobile data on standby while Wi-Fi works: it
+  joins when Wi-Fi is busy for a few seconds (5 Mbit/s or more) or stops working, and rests again after
+  a quiet minute.
+- **When a network fails or stalls**, new connections don't wait for it: if one hasn't connected after
+  1 second, the other network is tried at the same time and the first to answer wins. The slow network
+  is checked again right away and avoided until it passes. Connections already open on a network that
+  dies can't move (that needs a server); apps reconnect over the other one.
 - **One connection always uses one network.** A single video stream or single-stream download does
   not get faster. Many parallel connections do.
 - **It takes Android's VPN slot**, so it can't run together with another VPN.

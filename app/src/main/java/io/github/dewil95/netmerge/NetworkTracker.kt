@@ -18,8 +18,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Tracks every network that can reach the internet (Wi-Fi, mobile data, Ethernet, ...) and reports
- * the list on the main thread whenever it changes. While started it also keeps mobile data up:
- * Android normally takes it down as soon as Wi-Fi is connected.
+ * the list on the main thread whenever it changes. It can also keep mobile data up
+ * ([setKeepMobile]): Android normally takes it down as soon as Wi-Fi is connected.
  */
 class NetworkTracker(context: Context, private val onChange: (List<Link>) -> Unit) {
 
@@ -31,6 +31,7 @@ class NetworkTracker(context: Context, private val onChange: (List<Link>) -> Uni
         val ip6: String?,
         val v4: Boolean,
         val v6: Boolean,
+        val cellular: Boolean,
     ) {
         val handle: Long get() = network.networkHandle
     }
@@ -46,7 +47,7 @@ class NetworkTracker(context: Context, private val onChange: (List<Link>) -> Uni
     // Read from Go's threads while pinning sockets.
     private val byHandle = ConcurrentHashMap<Long, Network>()
 
-    private val keepMobile = object : ConnectivityManager.NetworkCallback() {}
+    private var keepMobile: ConnectivityManager.NetworkCallback? = null // set while requested
 
     private val watch = object : ConnectivityManager.NetworkCallback() {
         // Since Android 8, onAvailable is always followed by these two, so they are enough.
@@ -68,11 +69,6 @@ class NetworkTracker(context: Context, private val onChange: (List<Link>) -> Uni
     }
 
     fun start() {
-        val mobile = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
-            .build()
-        cm.requestNetwork(mobile, keepMobile, handler)
         val all = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -80,9 +76,29 @@ class NetworkTracker(context: Context, private val onChange: (List<Link>) -> Uni
         cm.registerNetworkCallback(all, watch, handler)
     }
 
+    /**
+     * Asks Android to keep mobile data up (true), or lets it take mobile data down while another
+     * network works (false). Main thread.
+     */
+    fun setKeepMobile(on: Boolean) {
+        if (on == (keepMobile != null)) return
+        if (on) {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                .build()
+            val cb = object : ConnectivityManager.NetworkCallback() {}
+            cm.requestNetwork(request, cb, handler)
+            keepMobile = cb
+        } else {
+            keepMobile?.let { runCatching { cm.unregisterNetworkCallback(it) } }
+            keepMobile = null
+        }
+    }
+
     fun stop() {
         runCatching { cm.unregisterNetworkCallback(watch) }
-        runCatching { cm.unregisterNetworkCallback(keepMobile) }
+        setKeepMobile(false)
         caps.clear()
         props.clear()
         byHandle.clear()
@@ -130,10 +146,13 @@ class NetworkTracker(context: Context, private val onChange: (List<Link>) -> Uni
         }
         val v4 = (ip4 != null && route4) || xlat
         if (!v4 && !v6) return null
-        return Link(n, name, label(nc), ip4?.hostAddress, ip6?.hostAddress, v4, v6)
+        val cellular = nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+        return Link(n, name, label(nc), ip4?.hostAddress, ip6?.hostAddress, v4, v6, cellular)
     }
 
     companion object {
+        const val MOBILE_LABEL = "Mobile data"
+
         /** The list in the JSON form Mobile.setNetworks takes. */
         fun toJson(links: List<Link>): String = JSONArray(
             links.map { l ->
@@ -155,7 +174,7 @@ class NetworkTracker(context: Context, private val onChange: (List<Link>) -> Uni
 
         private fun label(nc: NetworkCapabilities): String = when {
             nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
-            nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Mobile data"
+            nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> MOBILE_LABEL
             nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
             Build.VERSION.SDK_INT >= 31 && nc.hasTransport(NetworkCapabilities.TRANSPORT_USB) -> "USB"
             nc.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> "Bluetooth"

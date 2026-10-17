@@ -12,6 +12,7 @@ import android.net.VpnService
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import android.util.Log
 import mobile.Mobile
 import mobile.SocketBinder
@@ -55,14 +56,25 @@ class MergeVpnService : VpnService(), SocketBinder {
     private var tracker: NetworkTracker? = null
     private var running = false
     private val overlay by lazy { SpeedOverlay(this) }
+    private val power by lazy { getSystemService(PowerManager::class.java) }
+    private var saver = BatterySaver()
     private var ticks = 0
 
-    // Every second for the speed badge; the notification every other second.
+    // Every second: the battery saver's decision and the speed badge; the notification every
+    // other second.
     private val refresh = object : Runnable {
         override fun run() {
             val st = MergeStatus.parse(Mobile.status())
-            overlay.update(st)
-            if (ticks++ % 2 == 0) notifyStatus(st)
+            tracker?.let { t ->
+                val others = t.current().filter { !it.cellular }.map { it.name }.toSet()
+                t.setKeepMobile(saver.update(st, others, BatterySaver.isEnabled(this@MergeVpnService)))
+            }
+            if (power.isInteractive) {
+                overlay.update(st)
+                if (ticks++ % 2 == 0) notifyStatus(st)
+            } else {
+                overlay.hide() // nobody sees the badge or the notification with the screen off
+            }
             handler.postDelayed(this, 1000)
         }
     }
@@ -94,6 +106,8 @@ class MergeVpnService : VpnService(), SocketBinder {
         val t = NetworkTracker(this, ::onNetworksChanged)
         tracker = t
         t.start()
+        saver = BatterySaver()
+        t.setKeepMobile(!BatterySaver.isEnabled(this)) // the saver decides from the first second
         if (startEngine()) {
             running = true
             handler.post(refresh)

@@ -50,4 +50,5 @@ kotlin {
 dependencies {
     // The Go core, built by scripts/build-core.sh (gomobile bind of core/mobile).
     implementation(files("libs/netmerge-core.aar"))
+    testImplementation("junit:junit:4.13.2")
 }

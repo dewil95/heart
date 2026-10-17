@@ -37,6 +37,12 @@ The upstream tests run here too.
   and an idle link's estimate drifts back up 10%/s (desktop: 3%/s).
   `TestChatterIsNotAMeasurement` covers the chatter case.
 - Each network counts failed connections and keeps the last error, shown in the app.
+- **Connection racing:** `DialTCP` starts a second attempt on another network when the first
+  hasn't connected after `RaceAfter` (1 s); the first to connect wins and the rest are drained.
+  tun2socks gives each connect 5 s, so without racing a stalled network cost the app the whole 5 s.
+- **Suspect:** a network that loses a race or times out drops from "up" to "checking" and is
+  probed on the next tick, instead of at its routine 15 s probe. New flows prefer the networks
+  still known to work meanwhile.
 
 ## What is new
 
