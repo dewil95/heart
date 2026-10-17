@@ -188,14 +188,22 @@ func (s *Scheduler) Update(nics []nics.Nic) {
 	s.slots = kept
 }
 
-// A NIC counts as measured once it has carried this much (bytes/s, about 0.4 Mbit/s).
-const minMeasuredPeak = 50_000
+// A second of traffic only says something about a NIC's capacity at this rate or above (bytes/s,
+// 2 Mbit/s); below it the NIC counts as idle. On a phone, mobile data mostly carries background
+// chatter until a download starts: at the desktop's 0.4 Mbit/s it was "measured" as 20x slower
+// than Wi-Fi from chatter alone and got almost no flows when the download came.
+const minMeasuredPeak = 250_000
+
+// Lowest weight: a NIC that looks slow still gets about one new flow in six (fewer while its
+// flows are slower, since the pick counts active flows), so it is re-measured soon. The desktop
+// uses 0.05, sized for a weak tether next to fiber; a phone's links are rarely that far apart.
+const minWeight = 0.2
 
 // Tick samples throughput per family. With auto on, a family's weights follow each NIC's
-// observed peak for that family (floored at 0.05, so a slow path still sees an occasional flow
-// and is re-measured). Until every NIC with that family has been measured the weights stay
-// equal, which spreads load so each one gets measured. The peak holds while a NIC is idle and
-// only decays when it is in use but underperforming, so capacity is remembered across pauses.
+// observed peak for that family (floored at minWeight, so a slow path still sees flows and is
+// re-measured). Until every NIC with that family has been measured the weights stay equal,
+// which spreads load so each one gets measured. The peak holds while a NIC is idle and only
+// decays when it is in use but underperforming, so capacity is remembered across pauses.
 func (s *Scheduler) Tick(dt time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -222,7 +230,7 @@ func (s *Scheduler) Tick(dt time.Duration) {
 			sl.rateOut[f] = float64(out-sl.lastOut[f]) / sec
 			sl.lastIn[f], sl.lastOut[f] = in, out
 			r := sl.rateIn[f] + sl.rateOut[f]
-			if r >= 0.05*sl.peak[f] {
+			if r >= minMeasuredPeak && r >= 0.05*sl.peak[f] {
 				sl.peak[f] = math.Max(r, sl.peak[f]*0.97)
 			} else {
 				idle[sl] = true
@@ -235,10 +243,11 @@ func (s *Scheduler) Tick(dt time.Duration) {
 		}
 		// An idle NIC's old estimate may be stale or pessimistic (it was measured during a bad
 		// moment and then starved of flows, so it could never correct itself). Let it drift back
-		// up, capped at half of the best NIC, so it keeps getting a fair chance to be re-measured.
+		// up, 10%/s and capped at half of the best NIC, so it gets a fair chance to be re-measured
+		// before the next download (the desktop drifts 3%/s).
 		for sl := range idle {
 			if sl.present && sl.ip(f) != nil && sl.peak[f] > 0 {
-				sl.peak[f] = math.Min(sl.peak[f]*1.03, math.Max(sl.peak[f], 0.5*maxPeak))
+				sl.peak[f] = math.Min(sl.peak[f]*1.10, math.Max(sl.peak[f], 0.5*maxPeak))
 			}
 		}
 		for _, sl := range s.slots {
@@ -256,7 +265,7 @@ func (s *Scheduler) Tick(dt time.Duration) {
 			if live < 2 || !measured {
 				sl.weight[f] = 1
 			} else {
-				sl.weight[f] = math.Max(0.05, sl.peak[f]/maxPeak)
+				sl.weight[f] = math.Max(minWeight, sl.peak[f]/maxPeak)
 			}
 		}
 	}

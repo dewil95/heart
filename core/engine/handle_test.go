@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dewil95/net-merge-android/core/nics"
 )
@@ -112,5 +113,31 @@ func TestBindFailureFailsOver(t *testing.T) {
 	}
 	if st := s.Snapshot()[0]; st.DialErrors != 1 || !strings.Contains(st.LastError, "network is gone") {
 		t.Fatalf("the failure should be reported: %d %q", st.DialErrors, st.LastError)
+	}
+}
+
+// What the emulator showed: mobile data carried only background chatter, Wi-Fi carried a
+// download. Chatter is no measurement, so the weights stay equal and the next flows go to the
+// NIC with fewer active flows instead of piling onto Wi-Fi.
+func TestChatterIsNotAMeasurement(t *testing.T) {
+	s := NewScheduler([]nics.Nic{nicH("wlan0", "0.0.0.0", 1), nicH("rmnet0", "0.0.0.0", 2)})
+	s.SetAuto(true)
+	wifi, mobile := s.slots[0], s.slots[1]
+	s.SetState(wifi, Fam4, true)
+	s.SetState(mobile, Fam4, true)
+	for i := 0; i < 5; i++ {
+		wifi.bytesIn[Fam4].Add(12_000_000) // ~96 Mbit/s
+		mobile.bytesIn[Fam4].Add(60_000)   // ~0.5 Mbit/s of chatter
+		s.Tick(time.Second)
+	}
+	if wifi.weight[Fam4] != mobile.weight[Fam4] {
+		t.Fatalf("chatter must not down-weight mobile data: wifi %.2f, mobile %.2f", wifi.weight[Fam4], mobile.weight[Fam4])
+	}
+	for i := 0; i < 11; i++ { // Wi-Fi already holds 11 flows, mobile data 2
+		wifi.actF[Fam4].Add(1)
+	}
+	mobile.actF[Fam4].Add(2)
+	if got := s.AcquireFor(Fam4, nil); got != mobile {
+		t.Fatalf("a new flow should go to the less busy mobile data, went to %s", got.Name)
 	}
 }
