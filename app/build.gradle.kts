@@ -13,8 +13,9 @@ android {
         applicationId = "io.github.dewil95.netmerge"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // Each CI build counts up, so Android always sees a newer build as an upgrade.
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionName = "0.1.0 (build $versionCode)"
     }
 
     signingConfigs {
