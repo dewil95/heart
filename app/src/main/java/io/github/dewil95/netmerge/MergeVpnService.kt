@@ -7,8 +7,10 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
 import android.net.VpnService
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
@@ -95,9 +97,30 @@ class MergeVpnService : VpnService(), SocketBinder {
                 return START_STICKY
             }
         }
-        // ACTION_START from the app, or android.net.VpnService from the system (always-on VPN).
+        // ACTION_START from the app or after a reboot, or android.net.VpnService from the system
+        // (always-on VPN). Foreground first: a start from the background (startForegroundService)
+        // must call startForeground within seconds, even if starting then fails.
+        goForeground(if (running) statusNotification() else notification("Starting…", ""))
         startMerging()
         return START_STICKY
+    }
+
+    /**
+     * Runs as a foreground service with its notification, so Android keeps merging going with the
+     * app closed or swiped away, instead of stopping it to save battery.
+     */
+    private fun goForeground(n: Notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, n)
+            }
+        } catch (e: RuntimeException) {
+            // Android 12+ may refuse from the background. The system's binding to the VPN still
+            // keeps the service running, with an ordinary notification.
+            Log.w(TAG, "startForeground: $e")
+        }
     }
 
     private fun startMerging() {
@@ -188,6 +211,7 @@ class MergeVpnService : VpnService(), SocketBinder {
             Mobile.stop() // closes the TUN, which ends the VPN
             running = false
         }
+        stopForeground(STOP_FOREGROUND_REMOVE)
         getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
 
@@ -233,7 +257,14 @@ class MergeVpnService : VpnService(), SocketBinder {
         PendingIntent.FLAG_IMMUTABLE,
     )
 
+    private fun statusNotification(): Notification =
+        MergeStatus.parse(Mobile.status()).let { notification(it.headline, it.detail) }
+
     private fun notifyStatus(st: MergeStatus) {
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(st.headline, st.detail))
+    }
+
+    private fun notification(title: String, text: String): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             nm.createNotificationChannel(
@@ -242,16 +273,15 @@ class MergeVpnService : VpnService(), SocketBinder {
         }
         val stop = PendingIntent.getService(this, 1, intent(this, ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         val icon = Icon.createWithResource(this, R.drawable.ic_stat_merge)
-        val n = Notification.Builder(this, CHANNEL_ID)
+        return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(icon)
-            .setContentTitle(st.headline)
-            .setContentText(st.detail)
+            .setContentTitle(title)
+            .setContentText(text)
             .setContentIntent(openAppIntent())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .addAction(Notification.Action.Builder(icon, "Stop", stop).build())
             .build()
-        nm.notify(NOTIFICATION_ID, n)
     }
 }

@@ -1,7 +1,9 @@
 package io.github.dewil95.netmerge
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
@@ -12,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -42,6 +45,8 @@ class MainActivity : Activity() {
     private lateinit var appsButton: Button
     private lateinit var overlayButton: Button
     private lateinit var saverButton: Button
+    private lateinit var backgroundButton: Button
+    private lateinit var bootButton: Button
     private lateinit var headline: TextView
     private lateinit var error: TextView
     private lateinit var linksBox: LinearLayout
@@ -101,6 +106,7 @@ class MainActivity : Activity() {
         }
         renderOverlayButton()
         renderSaverButton()
+        renderBackgroundButtons()
         handler.post(poll)
     }
 
@@ -108,6 +114,34 @@ class MainActivity : Activity() {
         BatterySaver.setEnabled(this, !BatterySaver.isEnabled(this))
         renderSaverButton()
         rendered = null // the headline mentions the saver
+    }
+
+    private fun renderBackgroundButtons() {
+        val allowed = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+        backgroundButton.text = if (allowed) "Running in background: allowed" else "Allow running in background"
+        bootButton.text = "Start when the phone starts: " + if (BootReceiver.isEnabled(this)) "on" else "off"
+    }
+
+    /**
+     * Asks Android to leave net-merge out of battery optimization, so the phone doesn't pause it
+     * when idle. Once allowed, the button opens the system list to change it back.
+     */
+    @SuppressLint("BatteryLife") // the whole point of a VPN that should keep running
+    private fun onBackgroundTap() {
+        val allowed = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+        val list = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        try {
+            startActivity(
+                if (allowed) list else Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")),
+            )
+        } catch (e: ActivityNotFoundException) {
+            startActivity(list)
+        }
+    }
+
+    private fun onBootToggle() {
+        BootReceiver.setEnabled(this, !BootReceiver.isEnabled(this))
+        renderBackgroundButtons()
     }
 
     private fun renderSaverButton() {
@@ -248,6 +282,23 @@ class MainActivity : Activity() {
             text(
                 "Battery saver keeps mobile data on standby while Wi-Fi works. It joins when Wi-Fi " +
                     "is busy (a download) or stops working, and rests again after a quiet minute.",
+                13f,
+            ).apply { alpha = 0.6f },
+            below(4),
+        )
+
+        column.addView(text("In the background", 18f, bold = true), below(24))
+        backgroundButton = Button(this).apply { setOnClickListener { onBackgroundTap() } }
+        column.addView(backgroundButton, below(8))
+        bootButton = Button(this).apply { setOnClickListener { onBootToggle() } }
+        column.addView(bootButton, below(8))
+        column.addView(
+            text(
+                "Merging keeps running when you leave or close the app, with its notification. " +
+                    "Allowing it in the background stops Android from pausing it to save battery. " +
+                    "Some phones (Xiaomi, Samsung, Huawei, Oppo, Vivo) have their own battery manager " +
+                    "too: there, also allow net-merge under Autostart, No restrictions or Never " +
+                    "sleeping apps.",
                 13f,
             ).apply { alpha = 0.6f },
             below(4),

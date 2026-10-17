@@ -99,3 +99,21 @@ if ! adb shell pidof $pkg >/dev/null; then
   echo "net-merge is not running: it crashed, see logcat.txt"
   exit 1
 fi
+
+# In the background: leave the app, then merging must still run as a foreground service with the
+# VPN interface up.
+adb shell cmd statusbar expand-notifications
+shot 10-notification 2
+adb shell cmd statusbar collapse
+adb shell input keyevent KEYCODE_HOME
+sleep 10
+if ! adb shell dumpsys activity services $pkg | grep -q "isForeground=true"; then
+  echo "merging is not a foreground service after leaving the app"
+  adb shell dumpsys activity services $pkg | head -40
+  exit 1
+fi
+if ! adb shell ip addr show tun0 >/dev/null 2>&1; then
+  echo "the VPN interface is gone after leaving the app"
+  exit 1
+fi
+echo "still merging in the background (foreground service, tun0 up)"
