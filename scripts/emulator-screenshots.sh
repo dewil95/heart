@@ -15,13 +15,17 @@ shot() { # name [seconds to wait first]
 }
 
 # Taps the first on-screen element whose text starts with $1 (case-insensitive). Only for screens
-# that sit still: the dump waits for the UI to go idle.
+# that sit still: the dump waits for the UI to go idle, so it is retried a few times.
 tap_text() {
-  adb shell rm -f /sdcard/ui.xml
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null || true
-  local b
-  b=$(adb shell cat /sdcard/ui.xml 2>/dev/null | tr '>' '\n' | grep -i "text=\"$1" | head -1 |
-    sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/' || true)
+  local b="" try
+  for try in 1 2 3 4; do
+    adb shell rm -f /sdcard/ui.xml
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null || true
+    b=$(adb shell cat /sdcard/ui.xml 2>/dev/null | tr '>' '\n' | grep -i "text=\"$1" | head -1 |
+      sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/' || true)
+    [ -n "$b" ] && break
+    sleep 2
+  done
   if [ -z "$b" ]; then
     echo "no element with text \"$1\""
     return 1

@@ -45,10 +45,16 @@ class MainActivity : Activity() {
     private lateinit var linksBox: LinearLayout
     private var running = false
     private var askedOverlayPermission = false
+    private var rendered: String? = null // what the screen shows now, to skip redrawing it
 
     private val poll = object : Runnable {
         override fun run() {
-            render(MergeStatus.parse(Mobile.status()))
+            val json = Mobile.status()
+            val key = json + MergeVpnService.lastError
+            if (key != rendered) { // unchanged (e.g. while off): leave the views alone
+                rendered = key
+                render(MergeStatus.parse(json))
+            }
             handler.postDelayed(this, 1000)
         }
     }
