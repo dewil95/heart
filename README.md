@@ -41,8 +41,10 @@ Details and the differences from desktop net-merge: [docs/PORTING.md](docs/PORTI
 
 ## Install
 
-Every push builds a debug APK: open the latest run under **Actions → build**, download the
-`net-merge-debug-apk` artifact, unzip it and install the APK (allow installing from unknown sources).
+Every push builds the app and publishes it as the **android-latest** release. On your phone, open
+[Releases](https://github.com/dewil95/heart/releases/tag/android-latest), download
+`net-merge-debug.apk`, open it and allow installing from that source. Builds are signed with the same
+debug key, so a newer one installs over the old one.
 
 Open **net-merge**, tap **Start merging** and accept the VPN request. To start it automatically, turn on
 *Settings → Network & internet → VPN → net-merge → Always-on VPN*.

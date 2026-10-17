@@ -29,6 +29,10 @@ jobs:
   apk:
     name: Android APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # to publish the APK as a release
+    concurrency:
+      group: android-release # one release update at a time
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -55,3 +59,20 @@ jobs:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
+      # Artifacts only show on the run page, signed in, on the website. A release shows on the
+      # repo's Releases page (also in the GitHub app) and the APK downloads directly.
+      - name: Publish the APK as the "android-latest" release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk net-merge-debug.apk
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest net-merge-debug.apk \
+            --target "$GITHUB_SHA" --latest \
+            --title "net-merge for Android (latest build)" \
+            --notes "Built from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}. Early prototype, not yet tested on many phones.
+
+          Install: download net-merge-debug.apk below on your phone, open it and allow installing from this source. Then open net-merge, tap Start merging and accept the VPN request.
+
+          Every build is signed with the same key, so a newer one installs over this one."
