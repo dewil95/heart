@@ -35,11 +35,13 @@ open_screen() { # apps | usage
 }
 
 # Parallel downloads from the emulator's shell (its traffic goes through the VPN like an app's),
-# so both networks get connections. Best effort: skipped if the image has no curl.
+# so both networks get connections. The file is this app's own 27 MB APK on GitHub: Cloudflare's
+# speed test rate-limits repeated runs from one IP. Best effort: skipped if the image has no curl.
 traffic() {
-  adb shell 'command -v curl >/dev/null || exit 0
+  adb shell 'command -v curl >/dev/null || { echo "no curl on this image"; exit 0; }
     for i in 1 2 3 4 5 6 7 8; do
-      curl -s -o /dev/null --max-time 20 "https://speed.cloudflare.com/__down?bytes=20000000" &
+      curl -sL -o /dev/null --max-time 25 -w "download $i: HTTP %{http_code}, %{size_download} bytes, %{speed_download} B/s\n" \
+        "https://github.com/dewil95/heart/releases/download/android-latest/net-merge-debug.apk" &
     done
     wait' || true
 }
