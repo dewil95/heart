@@ -116,7 +116,12 @@ func Start(tunFd, mtu int32, binder SocketBinder) error {
 	sched := engine.NewScheduler(toNics(nets))
 	mode := v6mode
 	mu.Unlock()
-	sched.SetAuto(true) // weights follow measured throughput
+	// Equal weights: every new flow goes to the network with the fewest active flows. The desktop's
+	// auto weights learn speed by watching traffic, and on a phone that misjudges a network that
+	// just hasn't been busy yet: in three emulator runs the burst of apps reconnecting at start
+	// rated one network "slow" and all 8 parallel downloads then went to the other. Least-active
+	// alone still adapts, since a slower network holds its flows longer and so gets fewer new ones.
+	sched.SetAuto(false)
 	bal := engine.NewBalancer(sched)
 	bal.SetV6Mode(mode)
 	t, err := tunfd.Start(int(tunFd), int(mtu), bal)

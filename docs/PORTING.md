@@ -26,11 +26,16 @@ The upstream tests run here too.
   networks, which have no IPv4 address of their own, and IPv6 privacy addresses.
 - `nics.Octets` returns nothing: Android gives apps no per-interface byte counters, so only
   net-merge's own traffic is measured.
-- Speed learning is tuned for phones. A second of traffic counts as a measurement only at
-  2 Mbit/s or more (desktop: 0.4), the weight floor is 0.2 (desktop: 0.05) and an idle link's
-  estimate drifts back up 10%/s (desktop: 3%/s). On the emulator, mobile data carrying only
-  background chatter was "measured" as 20x slower than Wi-Fi, and 8 parallel downloads all went to
-  Wi-Fi. `TestChatterIsNotAMeasurement` covers it.
+- **The app runs with equal weights** (`SetAuto(false)`): each new flow goes to the network with
+  the fewest active flows. The desktop's auto weights learn each link's speed from the traffic it
+  happens to carry, and on a phone that can't tell a slow network from one that just hasn't been
+  busy. In three emulator runs, the burst of apps reconnecting when the VPN starts rated one
+  network "slow", and all 8 parallel downloads then went to the other. Least-active alone still
+  adapts: a slower network holds its flows longer, so it gets fewer new ones.
+- If auto weights are switched back on, they are tuned for phones: a second of traffic counts as a
+  measurement only at 2 Mbit/s or more (desktop: 0.4), the weight floor is 0.2 (desktop: 0.05)
+  and an idle link's estimate drifts back up 10%/s (desktop: 3%/s).
+  `TestChatterIsNotAMeasurement` covers the chatter case.
 - Each network counts failed connections and keeps the last error, shown in the app.
 
 ## What is new
