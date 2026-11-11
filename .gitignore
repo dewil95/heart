@@ -10,3 +10,8 @@ captures/
 # Built by scripts/build-core.sh
 app/libs/*.aar
 app/libs/*.jar
+
+# Windows per-app tool: local builds and runtime files
+windows/*.exe
+windows/netmerge-split.json
+windows/profiles/

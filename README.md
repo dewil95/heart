@@ -72,6 +72,14 @@ debug key, so a newer one installs over the old one.
 Open **net-merge**, tap **Start merging** and accept the VPN request. To start it automatically, turn on
 *Settings → Network & internet → VPN → net-merge → Always-on VPN*.
 
+## For Windows: send each app out a different network
+
+A separate small tool, [`windows/`](windows/), does the opposite of merging on a
+PC: it sends **each app out a network you pick** — e.g. Chrome over the cable,
+Brave over Wi-Fi, each with its own IP. Useful for two browser sessions on two
+IPs. It's a single `.exe`, no driver and no admin rights; download it from the
+**windows-latest** release. Details: [windows/README.md](windows/README.md).
+
 ## Build it yourself
 
 You need Go (version in `core/go.mod`), JDK 17, the Android SDK and the Android NDK.
@@ -94,6 +102,7 @@ Tests for the Go core need no phone: `cd core && go test ./...`.
 | `core/tunfd` | userland TCP/IP stack on the VPN's file descriptor |
 | `core/mobile` | the API the app calls (`mobile.Mobile` in Java/Kotlin) |
 | `app/` | the Android app: `MergeVpnService`, `NetworkTracker`, `MainActivity`, `AppsActivity` (apps that don't merge) |
+| `windows/` | Windows per-app tool: send each app out a chosen network (SOCKS proxy pinned to an interface) |
 
 ## Ideas for next steps
 

@@ -26,9 +26,48 @@ jobs:
           go vet ./...
           go test -race ./...
 
-  apk:
-    name: Android APK
+  windows:
+    name: Windows per-app tool
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # to publish the .exe as a release
+    concurrency:
+      group: windows-release # one release update at a time
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: windows/go.mod
+          cache: false # no third-party dependencies, so nothing to cache
+      - name: Format, vet, test
+        working-directory: windows
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then echo "gofmt needed: $unformatted"; exit 1; fi
+          go vet ./...
+          go test -race ./...
+      - name: Cross-compile for Windows
+        working-directory: windows
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../netmerge-split-windows-x64.exe .
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -o ../netmerge-split-windows-arm64.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: netmerge-split-windows
+          path: netmerge-split-windows-*.exe
+          if-no-files-found: error
+      - name: Publish as the "windows-latest" release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete windows-latest --yes --cleanup-tag || true
+          gh release create windows-latest netmerge-split-windows-*.exe \
+            --target "$GITHUB_SHA" --latest=false \
+            --title "net-merge per-app for Windows (latest build)" \
+            --notes "Built from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}. Sends each chosen app out a chosen network (e.g. Chrome over the cable, Brave over Wi-Fi). Early prototype, not yet tested widely.
+
+          Download the file for your PC (x64 for most; arm64 for Snapdragon/ARM laptops), put it in its own folder and run it. The first run writes netmerge-split.json next to it and starts your browsers, each on its own network. See windows/README.md for details. Windows SmartScreen may warn because the file is not signed: More info -> Run anyway."
     permissions:
       contents: write # to publish the APK as a release
     concurrency:
