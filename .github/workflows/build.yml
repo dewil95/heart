@@ -68,6 +68,10 @@ jobs:
             --notes "Built from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}. Sends each chosen app out a chosen network (e.g. Chrome over the cable, Brave over Wi-Fi). Early prototype, not yet tested widely.
 
           Download the file for your PC (x64 for most; arm64 for Snapdragon/ARM laptops), put it in its own folder and run it. The first run writes netmerge-split.json next to it and starts your browsers, each on its own network. See windows/README.md for details. Windows SmartScreen may warn because the file is not signed: More info -> Run anyway."
+
+  apk:
+    name: Android APK
+    runs-on: ubuntu-latest
     permissions:
       contents: write # to publish the APK as a release
     concurrency:
