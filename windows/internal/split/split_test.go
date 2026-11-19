@@ -1,4 +1,4 @@
-package main
+package split
 
 import (
 	"encoding/binary"
@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// echoServer accepts one-shot connections and echoes everything back.
+// echoServer accepts connections and echoes everything back.
 func echoServer(t *testing.T) net.Listener {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -28,8 +28,7 @@ func echoServer(t *testing.T) net.Listener {
 	return ln
 }
 
-// socksConnect does the SOCKS5 no-auth handshake and a CONNECT to host:port,
-// returning the open connection ready to carry data.
+// socksConnect does the SOCKS5 no-auth handshake and a CONNECT to host:port.
 func socksConnect(t *testing.T, proxyAddr, host string, port int) net.Conn {
 	t.Helper()
 	c, err := net.Dial("tcp", proxyAddr)
@@ -38,7 +37,6 @@ func socksConnect(t *testing.T, proxyAddr, host string, port int) net.Conn {
 	}
 	c.SetDeadline(time.Now().Add(5 * time.Second))
 
-	// Greeting: one method, no-auth.
 	if _, err := c.Write([]byte{socksVersion, 1, 0x00}); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +48,6 @@ func socksConnect(t *testing.T, proxyAddr, host string, port int) net.Conn {
 		t.Fatalf("bad method reply %v", resp)
 	}
 
-	// CONNECT request with a domain-style address so the proxy's resolver runs.
 	req := []byte{socksVersion, cmdConnect, 0x00, atypDomain, byte(len(host))}
 	req = append(req, host...)
 	req = append(req, 0, 0)
@@ -59,7 +56,7 @@ func socksConnect(t *testing.T, proxyAddr, host string, port int) net.Conn {
 		t.Fatal(err)
 	}
 
-	reply := make([]byte, 10) // v4 bound address is 10 bytes total
+	reply := make([]byte, 10)
 	if _, err := io.ReadFull(c, reply); err != nil {
 		t.Fatal(err)
 	}
@@ -76,16 +73,16 @@ func TestProxyConnectAndRelay(t *testing.T) {
 	_, portStr, _ := net.SplitHostPort(target.Addr().String())
 	port, _ := strconv.Atoi(portStr)
 
-	// A link with index 0: on Linux setUnicastIf is a no-op, so this dials
-	// normally and exercises the full SOCKS path including the resolver.
+	// IfaceIndex 0: on Linux setUnicastIf is a no-op, so this dials normally and
+	// exercises the full SOCKS path including the resolver.
 	l := &Link{Name: "test", IfaceIndex: 0}
-	p, err := listenProxy("127.0.0.1:0", "test", l.dial)
+	p, err := Listen("127.0.0.1:0", "test", l.Dial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer p.close()
+	defer p.Close()
 
-	conn := socksConnect(t, p.addr(), "localhost", port)
+	conn := socksConnect(t, p.Addr(), "localhost", port)
 	defer conn.Close()
 
 	msg := []byte("hello over socks")
@@ -103,20 +100,19 @@ func TestProxyConnectAndRelay(t *testing.T) {
 }
 
 func TestProxyRefusesWhenTargetDown(t *testing.T) {
-	// Grab a port, then close it so nothing is listening there.
 	tmp, _ := net.Listen("tcp", "127.0.0.1:0")
 	_, portStr, _ := net.SplitHostPort(tmp.Addr().String())
 	port, _ := strconv.Atoi(portStr)
-	tmp.Close()
+	tmp.Close() // nothing listens here now
 
 	l := &Link{Name: "test", IfaceIndex: 0}
-	p, err := listenProxy("127.0.0.1:0", "test", l.dial)
+	p, err := Listen("127.0.0.1:0", "test", l.Dial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer p.close()
+	defer p.Close()
 
-	c, err := net.Dial("tcp", p.addr())
+	c, err := net.Dial("tcp", p.Addr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,41 +133,48 @@ func TestProxyRefusesWhenTargetDown(t *testing.T) {
 }
 
 func TestConfigRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	path := dir + "/c.json"
+	path := t.TempDir() + "/c.json"
 	in := &Config{
 		Links: []LinkConfig{{Name: "cable", Interface: "Ethernet", IP: "192.168.1.50", Port: 1080}},
 		Apps:  []AppConfig{{Name: "Chrome", Path: `C:\chrome.exe`, Link: "cable", Chromium: true}},
 	}
-	if err := saveConfig(path, in); err != nil {
+	if err := SaveConfig(path, in); err != nil {
 		t.Fatal(err)
 	}
-	out, err := loadConfig(path)
+	out, err := LoadConfig(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(out.Links) != 1 || out.Links[0].Name != "cable" || out.Links[0].Port != 1080 {
 		t.Fatalf("links round-trip wrong: %+v", out.Links)
 	}
-	if out.linkConfig("cable") == nil || out.linkConfig("nope") != nil {
-		t.Fatal("linkConfig lookup wrong")
+	if out.LinkConfig("cable") == nil || out.LinkConfig("nope") != nil {
+		t.Fatal("LinkConfig lookup wrong")
 	}
 }
 
 func TestResolveLinkMatchesByIP(t *testing.T) {
-	ifs := []iface{
-		{name: "Ethernet", index: 5, ip: net.IPv4(192, 168, 1, 50)},
-		{name: "Wi-Fi", index: 9, ip: net.IPv4(192, 168, 1, 77), wifi: true},
+	ifs := []Iface{
+		{Name: "Ethernet", Index: 5, IP: net.IPv4(192, 168, 1, 50)},
+		{Name: "Wi-Fi", Index: 9, IP: net.IPv4(192, 168, 1, 77), Wifi: true},
 	}
-	// No interface name given, so it must match on IP.
-	l, err := resolveLink(LinkConfig{Name: "wifi", IP: "192.168.1.77"}, ifs)
+	l, err := ResolveLink(LinkConfig{Name: "wifi", IP: "192.168.1.77"}, ifs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if l.IfaceIndex != 9 || l.Interface != "Wi-Fi" {
 		t.Fatalf("matched wrong adapter: %+v", l)
 	}
-	if _, err := resolveLink(LinkConfig{Name: "x", IP: "10.0.0.1"}, ifs); err == nil {
+	if _, err := ResolveLink(LinkConfig{Name: "x", IP: "10.0.0.1"}, ifs); err == nil {
 		t.Fatal("expected no-match error")
+	}
+}
+
+func TestWifiInterfaceSelectsWifi(t *testing.T) {
+	// Can't force adapters on the test host, so just assert the helper agrees
+	// with UsableInterfaces about what counts as Wi-Fi.
+	w, ok := WifiInterface()
+	if ok && !w.Wifi {
+		t.Fatalf("WifiInterface returned a non-wifi adapter: %+v", w)
 	}
 }

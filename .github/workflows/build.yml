@@ -49,12 +49,15 @@ jobs:
       - name: Cross-compile for Windows
         working-directory: windows
         run: |
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../netmerge-split-windows-x64.exe .
-          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -o ../netmerge-split-windows-arm64.exe .
+          for arch in amd64 arm64; do
+            name=x64; [ "$arch" = arm64 ] && name=arm64
+            CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -o ../chrome-on-wifi-windows-$name.exe ./cmd/chrome-on-wifi
+            CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -o ../netmerge-split-windows-$name.exe ./cmd/netmerge-split
+          done
       - uses: actions/upload-artifact@v4
         with:
-          name: netmerge-split-windows
-          path: netmerge-split-windows-*.exe
+          name: windows-exes
+          path: "*-windows-*.exe"
           if-no-files-found: error
       - name: Publish as the "windows-latest" release
         if: github.event_name != 'pull_request'
@@ -62,12 +65,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete windows-latest --yes --cleanup-tag || true
-          gh release create windows-latest netmerge-split-windows-*.exe \
+          gh release create windows-latest ./*-windows-*.exe \
             --target "$GITHUB_SHA" --latest=false \
-            --title "net-merge per-app for Windows (latest build)" \
-            --notes "Built from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}. Sends each chosen app out a chosen network (e.g. Chrome over the cable, Brave over Wi-Fi). Early prototype, not yet tested widely.
+            --title "net-merge for Windows (latest build)" \
+            --notes "Built from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}. Early prototype.
 
-          Download the file for your PC (x64 for most; arm64 for Snapdragon/ARM laptops), put it in its own folder and run it. The first run writes netmerge-split.json next to it and starts your browsers, each on its own network. See windows/README.md for details. Windows SmartScreen may warn because the file is not signed: More info -> Run anyway."
+          chrome-on-wifi: one click opens a Chrome that uses Wi-Fi; everything else keeps using your normal connection (the cable). Download chrome-on-wifi-windows-x64.exe (arm64 for Snapdragon/ARM laptops), put it in its own folder and run it.
+
+          netmerge-split: the flexible version — assign several apps to several networks from a small config file (e.g. Chrome on the cable, Brave on Wi-Fi). See windows/README.md.
+
+          Windows SmartScreen may warn because the files are not signed: More info -> Run anyway."
 
   apk:
     name: Android APK

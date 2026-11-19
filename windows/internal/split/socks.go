@@ -1,4 +1,10 @@
-package main
+// Package split sends chosen apps out chosen network interfaces on Windows.
+// For each "link" it runs a small local SOCKS5 proxy whose sockets are pinned
+// to one interface (IP_UNICAST_IF), so traffic and DNS for that link leave on
+// that interface regardless of route metrics. Apps are launched pointed at the
+// matching proxy. This logic is OS-independent and testable; the interface
+// pinning is a no-op off Windows (see bind_other.go).
+package split
 
 import (
 	"context"
@@ -9,41 +15,36 @@ import (
 	"time"
 )
 
-// A tiny SOCKS5 proxy (CONNECT only, no authentication). Each proxy is tied to
-// one link: every connection it opens for a browser goes out through that
-// link's network interface, and so does the DNS lookup. A browser is pointed at
-// it with --proxy-server=socks5://127.0.0.1:<port>, so all of that browser's
-// traffic leaves on the chosen interface.
-//
-// SOCKS5 is RFC 1928. We only need the no-auth handshake and the CONNECT
-// command; browsers never ask for BIND or UDP ASSOCIATE over a SOCKS proxy.
+// DialFunc opens a connection for the proxy. Each link supplies one that is
+// bound to that link's interface.
+type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 
-type dialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
-
-type proxy struct {
+// Proxy is a running SOCKS5 proxy (CONNECT only, no authentication), which is
+// all a browser needs.
+type Proxy struct {
 	name string
 	ln   net.Listener
-	dial dialFunc
+	dial DialFunc
 }
 
-// listenProxy starts a proxy on addr (e.g. "127.0.0.1:1080") that opens its
-// connections with dial. It returns once it is listening; it serves in the
-// background until close is called.
-func listenProxy(addr, name string, dial dialFunc) (*proxy, error) {
+// Listen starts a proxy on addr (e.g. "127.0.0.1:1080") that opens its
+// connections with dial. It returns once listening and serves in the background
+// until Close is called.
+func Listen(addr, name string, dial DialFunc) (*Proxy, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	p := &proxy{name: name, ln: ln, dial: dial}
+	p := &Proxy{name: name, ln: ln, dial: dial}
 	go p.serve()
 	return p, nil
 }
 
-func (p *proxy) addr() string { return p.ln.Addr().String() }
+func (p *Proxy) Addr() string { return p.ln.Addr().String() }
 
-func (p *proxy) close() error { return p.ln.Close() }
+func (p *Proxy) Close() error { return p.ln.Close() }
 
-func (p *proxy) serve() {
+func (p *Proxy) serve() {
 	for {
 		c, err := p.ln.Accept()
 		if err != nil {
@@ -64,9 +65,8 @@ const (
 	repCmdNotSup = 0x07
 )
 
-func (p *proxy) handle(client net.Conn) {
+func (p *Proxy) handle(client net.Conn) {
 	defer client.Close()
-	// The browser should be quick to speak; don't let a stuck handshake sit.
 	client.SetDeadline(time.Now().Add(30 * time.Second))
 
 	// Greeting: version, number of methods, then that many method bytes.

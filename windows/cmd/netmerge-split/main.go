@@ -1,12 +1,10 @@
-// Command netmerge-split sends each chosen app out a chosen network on Windows.
-//
-// For every "link" (a cable, a Wi-Fi, a tethered phone) it starts a small local
-// SOCKS proxy whose traffic is pinned to that link's interface. Each app is then
-// launched pointed at its link's proxy, so — for example — Chrome goes out the
-// cable and Brave goes out Wi-Fi, each with its own IP address.
+// Command netmerge-split sends each chosen app out a chosen network on Windows,
+// driven by a netmerge-split.json config next to the program. For example,
+// Chrome over the cable and Brave over Wi-Fi, each with its own IP address.
 //
 // This separates apps onto different networks. It does not merge one app's
-// traffic across networks (that is what the Android net-merge app does).
+// traffic across networks (that is what the Android net-merge app does). For
+// the common "just put Chrome on Wi-Fi" case, use the chrome-on-wifi program.
 package main
 
 import (
@@ -15,24 +13,25 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+
+	"github.com/dewil95/net-merge-android/windows/internal/split"
 )
 
 func main() {
 	dir := exeDir()
 	cfgPath := filepath.Join(dir, "netmerge-split.json")
 
-	cfg, err := loadConfig(cfgPath)
+	cfg, err := split.LoadConfig(cfgPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			// A broken file: tell the user instead of silently overwriting it.
 			fmt.Println(err)
 			fmt.Println("Fix or delete this file and run again.")
 			pause()
 			return
 		}
 		fmt.Println("First run: looking at your networks and browsers...")
-		cfg = generateConfig()
-		if err := saveConfig(cfgPath, cfg); err != nil {
+		cfg = split.GenerateConfig()
+		if err := split.SaveConfig(cfgPath, cfg); err != nil {
 			fmt.Println("could not write config:", err)
 		} else {
 			fmt.Printf("Wrote %s\nEdit it to choose which app uses which link, then run again.\n\n", cfgPath)
@@ -45,16 +44,16 @@ func main() {
 		return
 	}
 
-	ifs := usableInterfaces()
+	ifs := split.UsableInterfaces()
 	live := map[string]bool{}
-	var proxies []*proxy
+	var proxies []*split.Proxy
 	for _, lc := range cfg.Links {
-		l, err := resolveLink(lc, ifs)
+		l, err := split.ResolveLink(lc, ifs)
 		if err != nil {
 			fmt.Printf("  link %-8q skipped: %v\n", lc.Name, err)
 			continue
 		}
-		p, err := listenProxy(fmt.Sprintf("127.0.0.1:%d", lc.Port), lc.Name, l.dial)
+		p, err := split.Listen(fmt.Sprintf("127.0.0.1:%d", lc.Port), lc.Name, l.Dial)
 		if err != nil {
 			fmt.Printf("  link %-8q skipped: cannot use port %d: %v\n", lc.Name, lc.Port, err)
 			continue
@@ -71,7 +70,7 @@ func main() {
 
 	fmt.Println()
 	for _, a := range cfg.Apps {
-		lc := cfg.linkConfig(a.Link)
+		lc := cfg.LinkConfig(a.Link)
 		if lc == nil || !live[a.Link] {
 			fmt.Printf("  app  %-8q skipped: link %q is not available\n", a.Name, a.Link)
 			continue
@@ -84,7 +83,7 @@ func main() {
 	signal.Notify(ch, os.Interrupt)
 	<-ch
 	for _, p := range proxies {
-		p.close()
+		p.Close()
 	}
 }
 
@@ -92,7 +91,7 @@ func main() {
 // a separate --user-data-dir so a fresh instance opens (and honours the proxy)
 // even if that browser is already running; it also gives each one its own
 // logins, which is the point of putting them on different IPs.
-func launchApp(dir string, a AppConfig, port int) {
+func launchApp(dir string, a split.AppConfig, port int) {
 	if _, err := os.Stat(a.Path); err != nil {
 		fmt.Printf("  app  %-8q skipped: not found at %s\n", a.Name, a.Path)
 		return
@@ -117,8 +116,6 @@ func launchApp(dir string, a AppConfig, port int) {
 	if a.Chromium {
 		fmt.Printf("  app  %-8q started on link %q (127.0.0.1:%d)\n", a.Name, a.Link, port)
 	} else {
-		// Not a Chromium browser: we started it, but it won't pick up the proxy
-		// on its own. Tell the user where to point it.
 		fmt.Printf("  app  %-8q started on link %q: set its proxy to SOCKS5 127.0.0.1:%d by hand\n", a.Name, a.Link, port)
 	}
 }
@@ -131,8 +128,8 @@ func exeDir() string {
 	return filepath.Dir(exe)
 }
 
-// pause keeps the console window open when the program was double-clicked and is
-// about to exit on an error, so the message can be read.
+// pause keeps the console window open when double-clicked and about to exit on
+// an error, so the message can be read.
 func pause() {
 	fmt.Print("\nPress Enter to close.")
 	fmt.Scanln()

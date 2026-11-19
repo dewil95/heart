@@ -74,11 +74,13 @@ Open **net-merge**, tap **Start merging** and accept the VPN request. To start i
 
 ## For Windows: send each app out a different network
 
-A separate small tool, [`windows/`](windows/), does the opposite of merging on a
-PC: it sends **each app out a network you pick** — e.g. Chrome over the cable,
-Brave over Wi-Fi, each with its own IP. Useful for two browser sessions on two
-IPs. It's a single `.exe`, no driver and no admin rights; download it from the
-**windows-latest** release. Details: [windows/README.md](windows/README.md).
+Small tools under [`windows/`](windows/) do the opposite of merging on a PC: they
+send **each app out a network you pick**. `chrome-on-wifi` is one click — it opens
+a Chrome that uses Wi-Fi while everything else stays on the cable. `netmerge-split`
+is the flexible version — assign several apps to several networks (e.g. Chrome on
+the cable, Brave on Wi-Fi), each with its own IP. No driver, no admin rights;
+download from the **windows-latest** release. Details:
+[windows/README.md](windows/README.md).
 
 ## Build it yourself
 

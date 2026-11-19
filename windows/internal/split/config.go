@@ -1,4 +1,4 @@
-package main
+package split
 
 import (
 	"encoding/json"
@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// Config is the netmerge-split.json file sitting next to the program. A "link"
-// is a network to send through; an "app" is a program pinned to one link.
+// Config is the netmerge-split.json file used by the flexible launcher. A
+// "link" is a network to send through; an "app" is a program pinned to one link.
 type Config struct {
 	Links []LinkConfig `json:"links"`
 	Apps  []AppConfig  `json:"apps"`
@@ -30,7 +30,7 @@ type AppConfig struct {
 	Args     []string `json:"args,omitempty"` // extra command-line arguments
 }
 
-func loadConfig(path string) (*Config, error) {
+func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func loadConfig(path string) (*Config, error) {
 	return &c, nil
 }
 
-func saveConfig(path string, c *Config) error {
+func SaveConfig(path string, c *Config) error {
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
@@ -50,7 +50,7 @@ func saveConfig(path string, c *Config) error {
 	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
-func (c *Config) linkConfig(name string) *LinkConfig {
+func (c *Config) LinkConfig(name string) *LinkConfig {
 	for i := range c.Links {
 		if c.Links[i].Name == name {
 			return &c.Links[i]
@@ -59,18 +59,18 @@ func (c *Config) linkConfig(name string) *LinkConfig {
 	return nil
 }
 
-// iface is one usable network adapter found on the machine.
-type iface struct {
-	name  string
-	index int
-	ip    net.IP
-	wifi  bool
+// Iface is one usable network adapter found on the machine.
+type Iface struct {
+	Name  string
+	Index int
+	IP    net.IP
+	Wifi  bool
 }
 
-// usableInterfaces lists adapters that are up, not loopback and have a real
+// UsableInterfaces lists adapters that are up, not loopback and have a real
 // IPv4 address, guessing from the name whether each is Wi-Fi.
-func usableInterfaces() []iface {
-	var out []iface
+func UsableInterfaces() []Iface {
+	var out []Iface
 	ifs, _ := net.Interfaces()
 	for _, in := range ifs {
 		if in.Flags&net.FlagUp == 0 || in.Flags&net.FlagLoopback != 0 {
@@ -94,21 +94,31 @@ func usableInterfaces() []iface {
 		low := strings.ToLower(in.Name)
 		wifi := strings.Contains(low, "wi-fi") || strings.Contains(low, "wifi") ||
 			strings.Contains(low, "wireless") || strings.Contains(low, "wlan")
-		out = append(out, iface{name: in.Name, index: in.Index, ip: ip, wifi: wifi})
+		out = append(out, Iface{Name: in.Name, Index: in.Index, IP: ip, Wifi: wifi})
 	}
 	return out
 }
 
-// generateConfig builds a starting config from what the machine has: one link
+// WifiInterface returns the first usable Wi-Fi adapter.
+func WifiInterface() (Iface, bool) {
+	for _, in := range UsableInterfaces() {
+		if in.Wifi {
+			return in, true
+		}
+	}
+	return Iface{}, false
+}
+
+// GenerateConfig builds a starting config from what the machine has: one link
 // per adapter, and any Chrome/Brave/Edge found, pinned to separate links so the
 // common "one browser per network" setup works out of the box.
-func generateConfig() *Config {
+func GenerateConfig() *Config {
 	c := &Config{}
 	used := map[string]bool{}
 	port := 1080
-	for _, in := range usableInterfaces() {
+	for _, in := range UsableInterfaces() {
 		base := "cable"
-		if in.wifi {
+		if in.Wifi {
 			base = "wifi"
 		}
 		name := base
@@ -116,7 +126,7 @@ func generateConfig() *Config {
 			name = fmt.Sprintf("%s%d", base, n)
 		}
 		used[name] = true
-		c.Links = append(c.Links, LinkConfig{Name: name, Interface: in.name, IP: in.ip.String(), Port: port})
+		c.Links = append(c.Links, LinkConfig{Name: name, Interface: in.Name, IP: in.IP.String(), Port: port})
 		port++
 	}
 
@@ -128,33 +138,33 @@ func generateConfig() *Config {
 	if len(c.Links) > 1 {
 		second = c.Links[1].Name
 	}
-	for _, b := range knownBrowsers {
-		path := findBrowser(b)
+	for _, b := range KnownBrowsers {
+		path := FindBrowser(b)
 		if path == "" {
 			continue
 		}
 		link := first
-		if b.name == "Brave" { // put the second browser on the second link, if any
+		if b.Name == "Brave" { // put the second browser on the second link, if any
 			link = second
 		}
-		c.Apps = append(c.Apps, AppConfig{Name: b.name, Path: path, Link: link, Chromium: b.chromium})
+		c.Apps = append(c.Apps, AppConfig{Name: b.Name, Path: path, Link: link, Chromium: b.Chromium})
 	}
 	return c
 }
 
-// resolveLink turns a LinkConfig into a live Link by matching it to an adapter,
+// ResolveLink turns a LinkConfig into a live Link by matching it to an adapter,
 // first by interface name, then by IP address.
-func resolveLink(lc LinkConfig, ifs []iface) (*Link, error) {
-	var match *iface
+func ResolveLink(lc LinkConfig, ifs []Iface) (*Link, error) {
+	var match *Iface
 	for i := range ifs {
-		if lc.Interface != "" && strings.EqualFold(ifs[i].name, lc.Interface) {
+		if lc.Interface != "" && strings.EqualFold(ifs[i].Name, lc.Interface) {
 			match = &ifs[i]
 			break
 		}
 	}
 	if match == nil && lc.IP != "" {
 		for i := range ifs {
-			if ifs[i].ip.String() == lc.IP {
+			if ifs[i].IP.String() == lc.IP {
 				match = &ifs[i]
 				break
 			}
@@ -165,8 +175,8 @@ func resolveLink(lc LinkConfig, ifs []iface) (*Link, error) {
 	}
 	return &Link{
 		Name:       lc.Name,
-		Interface:  match.name,
-		IfaceIndex: match.index,
-		SourceIP:   match.ip,
+		Interface:  match.Name,
+		IfaceIndex: match.Index,
+		SourceIP:   match.IP,
 	}, nil
 }

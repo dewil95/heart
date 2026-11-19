@@ -11,7 +11,9 @@ captures/
 app/libs/*.aar
 app/libs/*.jar
 
-# Windows per-app tool: local builds and runtime files
-windows/*.exe
+# Windows tools: local builds and runtime files
+windows/**/*.exe
+*-windows-*.exe
 windows/netmerge-split.json
-windows/profiles/
+windows/**/profiles/
+windows/**/chrome-wifi-profile/
