@@ -59,3 +59,18 @@ func (l *Link) dialer() *net.Dialer {
 func (l *Link) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	return l.dialer().DialContext(ctx, network, addr)
 }
+
+// Reachable reports whether this interface can actually reach the internet, by
+// opening a short TCP connection to a known host pinned to the interface. It is
+// used to leave out dead or virtual adapters (VPNs, VM host-only, etc.) when
+// merging automatically.
+func (l *Link) Reachable(timeout time.Duration) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	c, err := l.Dial(ctx, "tcp", "1.1.1.1:443")
+	if err != nil {
+		return false
+	}
+	c.Close()
+	return true
+}

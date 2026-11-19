@@ -26,6 +26,23 @@ Check it worked: in the Wi-Fi Chrome open a "what is my IP" page; it shows your
 Wi-Fi line's IP, different from the rest of the PC when the two use different
 internet lines.
 
+## chrome-merge — use both networks at once
+
+Opens **one Chrome that uses all your networks together** (cable + Wi-Fi). It
+spreads Chrome's connections across every network that has internet, sending each
+new one to the least-busy network. Pages with many parts, and multi-part
+downloads, get the combined speed.
+
+1. Download `chrome-merge-windows-x64.exe` from the **windows-latest** release,
+   put it in its own folder, run it.
+2. It checks which networks have internet, then opens a merged Chrome (its own
+   window and logins). Everything else on the PC is untouched.
+
+This is the PC cousin of the Android net-merge app. The same limit applies: **one
+single connection still uses one network**, so one plain download stream or one
+video does not get faster — but many connections at once do. For big single files
+use a download manager set to several parts.
+
 ## netmerge-split — the flexible one
 
 Assign **several apps to several networks** from a small config file, e.g. Chrome

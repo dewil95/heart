@@ -51,8 +51,9 @@ jobs:
         run: |
           for arch in amd64 arm64; do
             name=x64; [ "$arch" = arm64 ] && name=arm64
-            CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -o ../chrome-on-wifi-windows-$name.exe ./cmd/chrome-on-wifi
-            CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -o ../netmerge-split-windows-$name.exe ./cmd/netmerge-split
+            for cmd in chrome-on-wifi chrome-merge netmerge-split; do
+              CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -o ../$cmd-windows-$name.exe ./cmd/$cmd
+            done
           done
       - uses: actions/upload-artifact@v4
         with:
@@ -71,6 +72,8 @@ jobs:
             --notes "Built from ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}. Early prototype.
 
           chrome-on-wifi: one click opens a Chrome that uses Wi-Fi; everything else keeps using your normal connection (the cable). Download chrome-on-wifi-windows-x64.exe (arm64 for Snapdragon/ARM laptops), put it in its own folder and run it.
+
+          chrome-merge: one click opens a Chrome that uses ALL your networks at once (cable + Wi-Fi together) for more speed on pages and multi-part downloads. Download chrome-merge-windows-x64.exe.
 
           netmerge-split: the flexible version — assign several apps to several networks from a small config file (e.g. Chrome on the cable, Brave on Wi-Fi). See windows/README.md.
 
